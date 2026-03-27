@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ── test ────────────────────────────────────────────────────────────────────
+  # Runs on every push and every PR targeting main.
+
+  test:
+    name: Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  # ── build-arm64 ─────────────────────────────────────────────────────────────
+  # Native build for Apple Silicon. Only runs when merging into main.
+
+  build-arm64:
+    name: Build (arm64)
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build
+        env:
+          GOARCH: arm64
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-s -w" -o muzak-darwin-arm64 .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-darwin-arm64
+          path: muzak-darwin-arm64
+          retention-days: 1
+
+  # ── build-amd64 ─────────────────────────────────────────────────────────────
+  # Native build for Intel Macs. Only runs when merging into main.
+
+  build-amd64:
+    name: Build (amd64)
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build
+        env:
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-s -w" -o muzak-darwin-amd64 .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-darwin-amd64
+          path: muzak-darwin-amd64
+          retention-days: 1
+
+  # ── release ─────────────────────────────────────────────────────────────────
+  # Downloads both native binaries, combines them into a universal binary with
+  # lipo, then creates or overwrites the rolling "latest" pre-release.
+
+  release:
+    name: Release
+    needs: [build-arm64, build-amd64]
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-darwin-arm64
+
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-darwin-amd64
+
+      - name: Create universal binary
+        run: lipo -create -output muzak-darwin-universal muzak-darwin-arm64 muzak-darwin-amd64
+
+      - name: Make binaries executable
+        run: chmod +x muzak-darwin-arm64 muzak-darwin-amd64 muzak-darwin-universal
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest build"
+          prerelease: true
+          body: |
+            Rolling release — updated on every push to `main`.
+
+            **Commit:** ${{ github.sha }}
+            **Date:** ${{ github.event.head_commit.timestamp }}
+
+            | Binary | Architecture |
+            |--------|-------------|
+            | `muzak-darwin-universal` | Universal (arm64 + amd64) — recommended |
+            | `muzak-darwin-arm64` | Apple Silicon (M1/M2/M3) |
+            | `muzak-darwin-amd64` | Intel |
+
+            After downloading, mark the binary executable:
+            ```sh
+            chmod +x muzak-darwin-universal
+            ```
+          files: |
+            muzak-darwin-universal
+            muzak-darwin-arm64
+            muzak-darwin-amd64
