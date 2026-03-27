@@ -6,7 +6,7 @@ import (
 	"github.com/ronelliott/muzak/library"
 )
 
-// makeTracks builds n library.Track values with titles "Track 0", "Track 1", …
+// makeTracks builds n library.Track values each with Title "Track" and Artist "A", "B", …
 func makeTracks(n int) []*library.Track {
 	tracks := make([]*library.Track, n)
 	for i := range tracks {

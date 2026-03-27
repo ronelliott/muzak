@@ -29,7 +29,7 @@ cd muzak
 go build -o muzak .
 ```
 
-Requires Go 1.21+. No external system dependencies (audio output uses CoreAudio via CGo, which is part of the macOS SDK).
+Requires Go 1.26+. No external system dependencies (audio output uses CoreAudio via CGo, which is part of the macOS SDK).
 
 ## Usage
 

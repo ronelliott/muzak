@@ -3,9 +3,12 @@ package playlist
 
 import (
 	"math/rand"
+	"time"
 
 	"github.com/ronelliott/muzak/library"
 )
+
+var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 const maxHistory = 15
 
@@ -152,7 +155,7 @@ func (p *Playlist) applyShuffleAround(anchorOrderPos int) {
 		anchorTrack = p.order[anchorOrderPos]
 	}
 
-	rand.Shuffle(len(p.order), func(i, j int) {
+	rng.Shuffle(len(p.order), func(i, j int) {
 		p.order[i], p.order[j] = p.order[j], p.order[i]
 	})
 

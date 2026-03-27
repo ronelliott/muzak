@@ -332,9 +332,15 @@ func (m *Model) cmdLoadAndPlay() tea.Cmd {
 
 	pb, err := m.backend.Load(track.Opener, track.Format)
 	if err != nil {
-		// Keep playing nothing; the UI will show the error state.
 		m.current = nil
-		return nil
+		m.position = 0
+		m.duration = 0
+		// Skip to the next track rather than stalling on an unplayable file.
+		next := m.playlist.Next()
+		if next == nil {
+			return nil
+		}
+		return m.cmdLoadAndPlay()
 	}
 
 	m.trackID++
