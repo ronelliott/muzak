@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+
+  # ── test ────────────────────────────────────────────────────────────────────
+
+  test:
+    name: Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  # ── build-arm64 ─────────────────────────────────────────────────────────────
+
+  build-arm64:
+    name: Build (arm64)
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Build
+        env:
+          GOARCH: arm64
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-s -w" -o muzak-darwin-arm64 .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-darwin-arm64
+          path: muzak-darwin-arm64
+          retention-days: 1
+
+  # ── build-amd64 ─────────────────────────────────────────────────────────────
+
+  build-amd64:
+    name: Build (amd64)
+    needs: test
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Build
+        env:
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-s -w" -o muzak-darwin-amd64 .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-darwin-amd64
+          path: muzak-darwin-amd64
+          retention-days: 1
+
+  # ── release ─────────────────────────────────────────────────────────────────
+  # Downloads both native binaries, combines them into a universal binary with
+  # lipo, then creates a versioned GitHub release from the tag.
+
+  release:
+    name: Release
+    needs: [build-arm64, build-amd64]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-darwin-arm64
+
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-darwin-amd64
+
+      - name: Create universal binary
+        run: lipo -create -output muzak-darwin-universal muzak-darwin-arm64 muzak-darwin-amd64
+
+      - name: Make binaries executable
+        run: chmod +x muzak-darwin-arm64 muzak-darwin-amd64 muzak-darwin-universal
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ github.ref_name }}"
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            muzak-darwin-universal
+            muzak-darwin-arm64
+            muzak-darwin-amd64
