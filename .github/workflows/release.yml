@@ -58,7 +58,7 @@ jobs:
   build-amd64:
     name: Build (amd64)
     needs: test
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +71,7 @@ jobs:
         env:
           GOARCH: amd64
           CGO_ENABLED: "1"
+          SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
         run: go build -ldflags="-s -w" -o muzak-darwin-amd64 .
 
       - name: Upload artifact
