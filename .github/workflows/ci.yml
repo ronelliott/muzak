@@ -51,7 +51,7 @@ jobs:
         run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-arm64 .
 
       - name: Package
-        run: tar -czf muzak-darwin-arm64.tar.gz muzak-darwin-arm64
+        run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -84,7 +84,7 @@ jobs:
         run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-amd64 .
 
       - name: Package
-        run: tar -czf muzak-darwin-amd64.tar.gz muzak-darwin-amd64
+        run: mv muzak-darwin-amd64 muzak && tar -czf muzak-darwin-amd64.tar.gz muzak
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

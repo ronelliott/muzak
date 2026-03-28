@@ -47,7 +47,7 @@ jobs:
         run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-arm64 .
 
       - name: Package
-        run: tar -czf muzak-darwin-arm64.tar.gz muzak-darwin-arm64
+        run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -78,7 +78,7 @@ jobs:
         run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-amd64 .
 
       - name: Package
-        run: tar -czf muzak-darwin-amd64.tar.gz muzak-darwin-amd64
+        run: mv muzak-darwin-amd64 muzak && tar -czf muzak-darwin-amd64.tar.gz muzak
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -178,8 +178,7 @@ jobs:
             depends_on :macos
 
             def install
-              binary = Hardware::CPU.arm? ? "muzak-darwin-arm64" : "muzak-darwin-amd64"
-              bin.install binary => "muzak"
+              bin.install "muzak"
               chmod 0555, bin/"muzak"
             end
 
