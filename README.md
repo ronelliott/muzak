@@ -20,7 +20,7 @@ Plays FLAC and WAV files, including tracks stored inside ZIP archives.
 ## Installation
 
 ```sh
-go install github.com/ronelliott/muzak@latest
+go install github.com/ronelliott/muzak/cmd@latest
 ```
 
 Or build from source:
@@ -28,7 +28,7 @@ Or build from source:
 ```sh
 git clone https://github.com/ronelliott/muzak
 cd muzak
-go build -o muzak .
+go build -o muzak ./cmd/
 ```
 
 Requires Go 1.26+.
