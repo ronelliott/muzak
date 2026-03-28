@@ -48,7 +48,7 @@ jobs:
         env:
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-arm64 .
+        run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-arm64 ./cmd/
 
       - name: Package
         run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak

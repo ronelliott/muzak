@@ -118,6 +118,44 @@ func saveDiskCache(c *diskCache) {
 	}
 }
 
+// LoadFromCache returns tracks for the given source paths directly from the
+// disk cache, without re-scanning. Missing or unrecognised entries are silently
+// skipped. Use this for instant startup when sources are already cached.
+func LoadFromCache(paths []string) []*Track {
+	c := loadDiskCache()
+	var tracks []*Track
+	for _, p := range paths {
+		for sourcePath, entry := range c.Entries {
+			// Match any cache entry whose path starts with the source dir.
+			if len(sourcePath) >= len(p) && sourcePath[:len(p)] == p {
+				tracks = append(tracks, reconstructTracks(sourcePath, entry)...)
+			}
+		}
+	}
+	return tracks
+}
+
+// pruneCache removes all cache entries whose path starts with the given
+// source directory prefix, then saves the updated cache to disk.
+func pruneCache(sourceDir string) {
+	c := loadDiskCache()
+	for path := range c.Entries {
+		if len(path) >= len(sourceDir) && path[:len(sourceDir)] == sourceDir {
+			delete(c.Entries, path)
+		}
+	}
+	saveDiskCache(c)
+}
+
+// clearCache deletes the entire cache file.
+func clearCache() {
+	path, err := cacheFilePath()
+	if err != nil {
+		return
+	}
+	os.Remove(path) //nolint:errcheck
+}
+
 // buildCacheEntry converts freshly-scanned tracks into a cacheEntry using
 // the provided FileInfo for the fingerprint.
 func buildCacheEntry(info fs.FileInfo, tracks []*Track) *cacheEntry {

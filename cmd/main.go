@@ -3,16 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime/debug"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-
+	cmdlibrary "github.com/ronelliott/muzak/cmd/library"
 	"github.com/ronelliott/muzak/audio/beepbackend"
 	"github.com/ronelliott/muzak/library"
 	"github.com/ronelliott/muzak/playlist"
 	"github.com/ronelliott/muzak/ui"
+	"github.com/ronelliott/snek"
 )
 
 // version is set at build time via -ldflags "-X main.version=<value>".
@@ -36,16 +35,12 @@ func getVersion() string {
 	return version
 }
 
-func usageText() string {
-	name := filepath.Base(os.Args[0])
-	return fmt.Sprintf(`%s - terminal music player
-
-Usage:
-  %s [flags] [--] [directory...]
-
-Flags:
-  --version   Print version and exit
-  --help      Print this help and exit
+func main() {
+	snek.RunExit(
+		snek.NewConfig(),
+		snek.WithUse("muzak [directory...]"),
+		snek.WithShort("Terminal music player"),
+		snek.WithLong(`muzak - terminal music player
 
 Controls:
   p            Pause / play
@@ -56,58 +51,48 @@ Controls:
   l / esc      Toggle library overlay
   ↑ / ↓        Navigate
   ↵            Play selected
-  q / ctrl+c   Quit`, name, name)
+  q / ctrl+c   Quit`),
+		snek.WithVersion(getVersion()),
+		snek.WithSimpleRunE(runPlay),
+		snek.WithSubCommandGenerator(cmdlibrary.NewCommand),
+	)
 }
 
-func main() {
-	args := os.Args[1:]
-	var dirs []string
-	pastFlags := false
+func runPlay(args []string) error {
+	var tracks []*library.Track
 
-	for _, arg := range args {
-		if pastFlags || arg == "--" {
-			if arg != "--" {
-				dirs = append(dirs, arg)
-			}
-			pastFlags = true
-			continue
+	if len(args) > 0 {
+		// Explicit directories — scan and ignore stored library.
+		fmt.Fprintln(os.Stderr, "Scanning for audio files…")
+		var err error
+		tracks, err = library.Scan(args)
+		if err != nil {
+			return fmt.Errorf("scan: %w", err)
 		}
-		switch arg {
-		case "--version":
-			fmt.Println(getVersion())
-			return
-		case "--help":
-			fmt.Println(usageText())
-			return
-		default:
-			if strings.HasPrefix(arg, "-") {
-				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\n%s\n", arg, usageText())
-				os.Exit(1)
+	} else {
+		// No args — use stored library sources.
+		sources := library.LoadSources()
+		if len(sources.Paths) > 0 {
+			tracks = library.LoadFromCache(sources.Paths)
+		} else {
+			// Fall back to scanning current directory.
+			fmt.Fprintln(os.Stderr, "Scanning for audio files…")
+			var err error
+			tracks, err = library.Scan([]string{"."})
+			if err != nil {
+				return fmt.Errorf("scan: %w", err)
 			}
-			dirs = append(dirs, arg)
 		}
 	}
 
-	if len(dirs) == 0 {
-		dirs = []string{"."}
-	}
-
-	fmt.Fprintln(os.Stderr, "Scanning for audio files…")
-	tracks, err := library.Scan(dirs)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "scan error: %v\n", err)
-		os.Exit(1)
-	}
 	if len(tracks) == 0 {
-		fmt.Fprintln(os.Stderr, "No audio files found in the given directories.")
-		os.Exit(1)
+		return fmt.Errorf("no audio files found")
 	}
 	fmt.Fprintf(os.Stderr, "Found %d track(s).\n", len(tracks))
 
 	backend := beepbackend.New()
 	if err := backend.Init(); err != nil {
-		fmt.Fprintf(os.Stderr, "audio init error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("audio init: %w", err)
 	}
 	defer backend.Close()
 
@@ -116,7 +101,7 @@ func main() {
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "ui error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ui: %w", err)
 	}
+	return nil
 }

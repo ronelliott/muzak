@@ -44,7 +44,7 @@ jobs:
         env:
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-arm64 .
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-arm64 ./cmd/
 
       - name: Package
         run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak
@@ -75,7 +75,7 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: "1"
           SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-amd64 .
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-amd64 ./cmd/
 
       - name: Package
         run: mv muzak-darwin-amd64 muzak && tar -czf muzak-darwin-amd64.tar.gz muzak
