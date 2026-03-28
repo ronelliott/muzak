@@ -295,98 +295,19 @@ jobs:
             muzak-windows-amd64.zip
             muzak-windows-arm64.zip
 
-  # ── update-tap ──────────────────────────────────────────────────────────────
-  # Computes SHA256 of macOS/Linux tarballs and pushes an updated formula.
-  # Windows is not distributed via Homebrew.
+  # ── notify-tap ──────────────────────────────────────────────────────────────
+  # Fires a repository_dispatch to homebrew-muzak, which owns the formula
+  # update logic in its own workflow.
 
-  update-tap:
-    name: Update Homebrew Tap
+  notify-tap:
+    name: Notify Homebrew Tap
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Download tarballs
-        run: |
-          for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
-            curl --retry 5 --retry-delay 5 -fsSL \
-              "https://github.com/ronelliott/muzak/releases/download/${{ github.ref_name }}/muzak-${target}.tar.gz" \
-              -o "muzak-${target}.tar.gz"
-          done
-
-      - name: Compute SHA256s
-        id: sha
-        run: |
-          echo "darwin_arm64=$(sha256sum muzak-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "darwin_amd64=$(sha256sum muzak-darwin-amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "linux_amd64=$(sha256sum muzak-linux-amd64.tar.gz | awk '{print $1}')"   >> "$GITHUB_OUTPUT"
-          echo "linux_arm64=$(sha256sum muzak-linux-arm64.tar.gz | awk '{print $1}')"   >> "$GITHUB_OUTPUT"
-
-      - name: Clone tap repo
-        uses: actions/checkout@v4
-        with:
-          repository: ronelliott/homebrew-muzak
-          token: ${{ secrets.TAP_GITHUB_TOKEN }}
-          path: tap
-
-      - name: Write formula
-        env:
-          VERSION: ${{ github.ref_name }}
-          SHA_DARWIN_ARM64: ${{ steps.sha.outputs.darwin_arm64 }}
-          SHA_DARWIN_AMD64: ${{ steps.sha.outputs.darwin_amd64 }}
-          SHA_LINUX_AMD64: ${{ steps.sha.outputs.linux_amd64 }}
-          SHA_LINUX_ARM64: ${{ steps.sha.outputs.linux_arm64 }}
-        run: |
-          VERSION_NUM="${VERSION#v}"
-          cat > tap/Formula/muzak.rb <<EOF
-          class Muzak < Formula
-            desc "Minimalist terminal-based music player"
-            homepage "https://github.com/ronelliott/muzak"
-            version "${VERSION_NUM}"
-            license "MIT"
-
-            on_macos do
-              on_arm do
-                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-arm64.tar.gz"
-                sha256 "${SHA_DARWIN_ARM64}"
-              end
-
-              on_intel do
-                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-amd64.tar.gz"
-                sha256 "${SHA_DARWIN_AMD64}"
-              end
-            end
-
-            on_linux do
-              depends_on "alsa-lib"
-
-              on_intel do
-                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-linux-amd64.tar.gz"
-                sha256 "${SHA_LINUX_AMD64}"
-              end
-
-              on_arm do
-                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-linux-arm64.tar.gz"
-                sha256 "${SHA_LINUX_ARM64}"
-              end
-            end
-
-            def install
-              bin.install "muzak"
-              chmod 0555, bin/"muzak"
-            end
-
-            test do
-              assert_match version.to_s, shell_output("#{bin}/muzak --version")
-            end
-          end
-          EOF
-
-      - name: Commit and push
+      - name: Dispatch to homebrew-muzak
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/muzak.rb
-          git diff --staged --quiet || git commit -m "chore: update muzak to ${{ github.ref_name }}"
-          git push
+          gh api repos/ronelliott/homebrew-muzak/dispatches \
+            -f event_type=muzak-release \
+            -f "client_payload[tag]=${{ github.ref_name }}"
