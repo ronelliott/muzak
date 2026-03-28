@@ -13,6 +13,7 @@ import (
 // ─── styles ──────────────────────────────────────────────────────────────────
 
 var (
+	styleStatus     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	styleNowPlaying = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
 	stylePaused     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 	styleSelected   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("213"))
@@ -153,10 +154,14 @@ func (m *Model) renderNowPlaying() string {
 	meta := styleControls.Render(fmt.Sprintf("  %s  Vol:%d%%", progress, vol)) + flags
 
 	name := truncate(track.DisplayName(), m.width/2)
-	if m.current != nil && m.current.IsPlaying() {
-		return styleNowPlaying.Render("Now Playing: "+name) + meta
+	switch {
+	case m.current != nil && m.current.IsPlaying():
+		return styleStatus.Render("▶") + " " + styleNowPlaying.Render(name) + meta
+	case m.current == nil:
+		return styleStatus.Render("⏹") + " " + stylePaused.Render(name) + meta // end of playlist
+	default:
+		return styleStatus.Render("⏸") + " " + stylePaused.Render(name) + meta
 	}
-	return stylePaused.Render("Paused: "+name) + meta
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

@@ -58,6 +58,8 @@ Playback starts automatically with the first track found.
 | Key | Action |
 |-----|--------|
 | `p` | Pause / play |
+| `,` | Previous track |
+| `.` | Next track |
 | `[` | Rewind 10 seconds |
 | `]` | Fast-forward 10 seconds |
 | `+` | Volume up |
@@ -81,6 +83,7 @@ The last 15 played tracks are shown above the now-playing bar, newest at the bot
 ## Status indicators
 
 The now-playing bar shows:
+- `▶` when playing, `⏸` when paused, `⏹` when the playlist has ended
 - `[S]` when shuffle is active
 - `[R]` when repeat is active
 - Current position and total duration

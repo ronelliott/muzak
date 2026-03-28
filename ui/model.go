@@ -200,6 +200,17 @@ func (m *Model) handlePlayerKey(key string) (tea.Model, tea.Cmd) {
 	history := m.playlist.History()
 
 	switch key {
+	case keyPrev:
+		m.playlist.Prev()
+		return m, m.cmdLoadAndPlay()
+
+	case keyNext:
+		next := m.playlist.Next()
+		if next == nil {
+			return m, nil
+		}
+		return m, m.cmdLoadAndPlay()
+
 	case keyRewind:
 		if m.current != nil {
 			target := m.position - seekStep
