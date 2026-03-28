@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const sourcesVersion = 1
@@ -71,28 +72,55 @@ func (s *Sources) Save() error {
 	return nil
 }
 
-// Add resolves path to an absolute path and appends it to the sources list if
-// not already present. The caller is responsible for scanning and saving.
+// Add resolves path to an absolute path (or canonicalises SMB URLs) and
+// appends it to the sources list if not already present. The caller is
+// responsible for scanning and saving.
 func (s *Sources) Add(path string) error {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
+	canonical := path
+	if IsSMBPath(path) {
+		canonical = canonicalizeSMBURL(path)
+	} else {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve path: %w", err)
+		}
+		canonical = abs
 	}
 	for _, p := range s.Paths {
-		if p == abs {
+		if p == canonical {
 			return nil // already present
 		}
 	}
-	s.Paths = append(s.Paths, abs)
+	s.Paths = append(s.Paths, canonical)
 	return nil
 }
 
-// Remove removes path (resolved to absolute) from the sources list and prunes
-// its entries from the disk cache. The caller is responsible for saving.
-func (s *Sources) Remove(path string) error {
-	abs, err := filepath.Abs(path)
+// canonicalizeSMBURL normalises an SMB URL: lowercases scheme and host,
+// strips the default port 445, and trims extraneous path slashes.
+// Returns the input unchanged on parse error.
+func canonicalizeSMBURL(rawURL string) string {
+	cfg, err := parseSMBURL(rawURL)
 	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
+		return rawURL
+	}
+	prefix := smbURLPrefix(cfg) // "smb://[user:pass@]host/share/"
+	if cfg.subpath != "" {
+		return prefix + cfg.subpath
+	}
+	return strings.TrimSuffix(prefix, "/")
+}
+
+// Remove removes path (resolved to absolute, or kept as-is for SMB URLs) from
+// the sources list and prunes its entries from the disk cache. The caller is
+// responsible for saving.
+func (s *Sources) Remove(path string) error {
+	abs := path
+	if !IsSMBPath(path) {
+		var err error
+		abs, err = filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve path: %w", err)
+		}
 	}
 
 	updated := s.Paths[:0]
