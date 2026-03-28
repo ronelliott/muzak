@@ -48,7 +48,7 @@ jobs:
         env:
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -ldflags="-s -w" -o muzak-darwin-arm64 .
+        run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-arm64 .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -78,7 +78,7 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: "1"
           SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-        run: go build -ldflags="-s -w" -o muzak-darwin-amd64 .
+        run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-amd64 .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

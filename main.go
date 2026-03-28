@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime/debug"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -12,8 +15,79 @@ import (
 	"github.com/ronelliott/muzak/ui"
 )
 
+// version is set at build time via -ldflags "-X main.version=<value>".
+// Falls back to the embedded VCS commit hash when --version is invoked.
+var version = "dev"
+
+func getVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				if len(s.Value) > 7 {
+					return s.Value[:7]
+				}
+				return s.Value
+			}
+		}
+	}
+	return version
+}
+
+func usageText() string {
+	name := filepath.Base(os.Args[0])
+	return fmt.Sprintf(`%s - terminal music player
+
+Usage:
+  %s [flags] [--] [directory...]
+
+Flags:
+  --version   Print version and exit
+  --help      Print this help and exit
+
+Controls:
+  p            Pause / play
+  [ / ]        Rewind / forward 10s
+  s            Shuffle
+  r            Repeat
+  + / -        Volume up / down
+  l / esc      Toggle library overlay
+  ↑ / ↓        Navigate
+  ↵            Play selected
+  q / ctrl+c   Quit`, name, name)
+}
+
 func main() {
-	dirs := os.Args[1:]
+	args := os.Args[1:]
+	var dirs []string
+	pastFlags := false
+
+	for _, arg := range args {
+		if pastFlags || arg == "--" {
+			if arg != "--" {
+				dirs = append(dirs, arg)
+			}
+			pastFlags = true
+			continue
+		}
+		switch arg {
+		case "--version":
+			fmt.Println(getVersion())
+			return
+		case "--help":
+			fmt.Println(usageText())
+			return
+		default:
+			if strings.HasPrefix(arg, "-") {
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\n%s\n", arg, usageText())
+				os.Exit(1)
+			}
+			dirs = append(dirs, arg)
+		}
+	}
+
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
