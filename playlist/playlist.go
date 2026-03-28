@@ -78,6 +78,28 @@ func (p *Playlist) SetFirst() *library.Track {
 	return p.Current()
 }
 
+// Prev moves to the previous track. When already at the first track and repeat
+// is off, it stays on the first track. With repeat on it wraps to the last,
+// reshuffling first when shuffle is also enabled (mirrors Next() behaviour).
+func (p *Playlist) Prev() *library.Track {
+	if len(p.order) == 0 {
+		return nil
+	}
+	prev := p.cursor - 1
+	if prev < 0 {
+		if !p.repeat {
+			prev = 0
+		} else {
+			if p.shuffle {
+				p.applyShuffleAround(-1)
+			}
+			prev = len(p.order) - 1
+		}
+	}
+	p.SetCursor(prev)
+	return p.Current()
+}
+
 // Next advances to the next track. Returns nil if the playlist is exhausted
 // and repeat is off.
 func (p *Playlist) Next() *library.Track {

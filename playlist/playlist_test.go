@@ -118,6 +118,74 @@ func TestNext_WrapsAtEndWithRepeat(t *testing.T) {
 	}
 }
 
+// ─── Prev ─────────────────────────────────────────────────────────────────────
+
+func TestPrev_MovesBackFromMiddle(t *testing.T) {
+	tracks := makeTracks(3)
+	p := New(tracks)
+	p.SetFirst()
+	p.Next() // cursor = 1
+
+	got := p.Prev()
+	if got != tracks[0] {
+		t.Errorf("Prev() returned wrong track")
+	}
+	if p.cursor != 0 {
+		t.Errorf("cursor = %d, want 0", p.cursor)
+	}
+}
+
+func TestPrev_ClampsAtFirstTrackWithoutRepeat(t *testing.T) {
+	tracks := makeTracks(3)
+	p := New(tracks)
+	p.SetFirst() // cursor = 0
+
+	got := p.Prev()
+	if got != tracks[0] {
+		t.Errorf("Prev() at first track without repeat should return first track")
+	}
+	if p.cursor != 0 {
+		t.Errorf("cursor = %d, want 0", p.cursor)
+	}
+}
+
+func TestPrev_WrapsToLastWithRepeat(t *testing.T) {
+	tracks := makeTracks(3)
+	p := New(tracks)
+	p.SetRepeat(true)
+	p.SetFirst() // cursor = 0
+
+	got := p.Prev()
+	if got != tracks[2] {
+		t.Errorf("Prev() with repeat should wrap to last track")
+	}
+	if p.cursor != 2 {
+		t.Errorf("cursor after wrap = %d, want 2", p.cursor)
+	}
+}
+
+func TestPrev_ShuffleRepeat_ReshufflesOnWrap(t *testing.T) {
+	p := New(makeTracks(8))
+	p.SetRepeat(true)
+	p.SetShuffle(true)
+	p.SetFirst() // cursor = 0
+	orderBefore := orderOf(p)
+
+	p.Prev() // should wrap and reshuffle
+
+	orderAfter := orderOf(p)
+	same := true
+	for i := range orderBefore {
+		if orderBefore[i] != orderAfter[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Error("Prev() with shuffle+repeat should reshuffle on wrap (astronomically unlikely to produce identical order)")
+	}
+}
+
 // ─── JumpToTrack ──────────────────────────────────────────────────────────────
 
 func TestJumpToTrack_FindsTrack(t *testing.T) {
