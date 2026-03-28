@@ -9,7 +9,6 @@ on:
 jobs:
 
   # ── test-macos ───────────────────────────────────────────────────────────────
-  # Runs on every push and every PR targeting main.
 
   test-macos:
     name: Test (macOS)
@@ -50,12 +49,30 @@ jobs:
       - name: Test
         run: go test ./...
 
+  # ── test-windows ─────────────────────────────────────────────────────────────
+
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
   # ── build-darwin-arm64 ──────────────────────────────────────────────────────
-  # Native build for Apple Silicon. Only runs when merging into main.
 
   build-darwin-arm64:
     name: Build (darwin/arm64)
-    needs: [test-macos, test-linux]
+    needs: [test-macos, test-linux, test-windows]
     if: github.event_name == 'push'
     runs-on: macos-14
     steps:
@@ -83,11 +100,10 @@ jobs:
           retention-days: 1
 
   # ── build-darwin-amd64 ──────────────────────────────────────────────────────
-  # Native build for Intel Macs. Only runs when merging into main.
 
   build-darwin-amd64:
     name: Build (darwin/amd64)
-    needs: [test-macos, test-linux]
+    needs: [test-macos, test-linux, test-windows]
     if: github.event_name == 'push'
     runs-on: macos-latest
     steps:
@@ -119,7 +135,7 @@ jobs:
 
   build-linux-amd64:
     name: Build (linux/amd64)
-    needs: [test-macos, test-linux]
+    needs: [test-macos, test-linux, test-windows]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -153,7 +169,7 @@ jobs:
 
   build-linux-arm64:
     name: Build (linux/arm64)
-    needs: [test-macos, test-linux]
+    needs: [test-macos, test-linux, test-windows]
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04-arm
     steps:
@@ -183,12 +199,80 @@ jobs:
           path: muzak-linux-arm64.tar.gz
           retention-days: 1
 
+  # ── build-windows-amd64 ─────────────────────────────────────────────────────
+
+  build-windows-amd64:
+    name: Build (windows/amd64)
+    needs: [test-macos, test-linux, test-windows]
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOARCH: amd64
+          GOOS: windows
+          CGO_ENABLED: "0"
+        run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-windows-amd64.exe ./cmd/
+
+      - name: Package
+        run: |
+          Move-Item muzak-windows-amd64.exe muzak.exe
+          Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-amd64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-windows-amd64
+          path: muzak-windows-amd64.zip
+          retention-days: 1
+
+  # ── build-windows-arm64 ─────────────────────────────────────────────────────
+  # Cross-compiled from amd64; no CGO required for Windows.
+
+  build-windows-arm64:
+    name: Build (windows/arm64)
+    needs: [test-macos, test-linux, test-windows]
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOARCH: arm64
+          GOOS: windows
+          CGO_ENABLED: "0"
+        run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-windows-arm64.exe ./cmd/
+
+      - name: Package
+        run: |
+          Move-Item muzak-windows-arm64.exe muzak.exe
+          Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-arm64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-windows-arm64
+          path: muzak-windows-arm64.zip
+          retention-days: 1
+
   # ── release ─────────────────────────────────────────────────────────────────
-  # Downloads all tarballs and creates or overwrites the rolling "latest" pre-release.
 
   release:
     name: Release
-    needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64]
+    needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64, build-windows-amd64, build-windows-arm64]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -214,6 +298,16 @@ jobs:
         with:
           name: muzak-linux-arm64
 
+      - name: Download windows-amd64 zip
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-windows-amd64
+
+      - name: Download windows-arm64 zip
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-windows-arm64
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -226,16 +320,20 @@ jobs:
             **Commit:** ${{ github.sha }}
             **Date:** ${{ github.event.head_commit.timestamp }}
 
-            > **Note:** Linux binaries are tested via automated CI only and have not been verified on actual hardware.
+            > **Note:** Linux and Windows binaries are tested via automated CI only and have not been verified on actual hardware.
 
-            | Tarball | Platform | Architecture |
-            |---------|----------|-------------|
+            | File | Platform | Architecture |
+            |------|----------|-------------|
             | `muzak-darwin-arm64.tar.gz` | macOS | Apple Silicon (M1/M2/M3/M4) |
             | `muzak-darwin-amd64.tar.gz` | macOS | Intel |
             | `muzak-linux-amd64.tar.gz` | Linux | x86-64 |
             | `muzak-linux-arm64.tar.gz` | Linux | ARM64 |
+            | `muzak-windows-amd64.zip` | Windows | x86-64 |
+            | `muzak-windows-arm64.zip` | Windows | ARM64 |
           files: |
             muzak-darwin-arm64.tar.gz
             muzak-darwin-amd64.tar.gz
             muzak-linux-amd64.tar.gz
             muzak-linux-arm64.tar.gz
+            muzak-windows-amd64.zip
+            muzak-windows-arm64.zip
