@@ -26,10 +26,10 @@ jobs:
       - name: Test
         run: go test ./...
 
-  # ── build-arm64 ─────────────────────────────────────────────────────────────
+  # ── build-darwin-arm64 ──────────────────────────────────────────────────────
 
-  build-arm64:
-    name: Build (arm64)
+  build-darwin-arm64:
+    name: Build (darwin/arm64)
     needs: test
     runs-on: macos-14
     steps:
@@ -56,10 +56,10 @@ jobs:
           path: muzak-darwin-arm64.tar.gz
           retention-days: 1
 
-  # ── build-amd64 ─────────────────────────────────────────────────────────────
+  # ── build-darwin-amd64 ──────────────────────────────────────────────────────
 
-  build-amd64:
-    name: Build (amd64)
+  build-darwin-amd64:
+    name: Build (darwin/amd64)
     needs: test
     runs-on: macos-latest
     steps:
@@ -87,25 +87,100 @@ jobs:
           path: muzak-darwin-amd64.tar.gz
           retention-days: 1
 
+  # ── build-linux-amd64 ───────────────────────────────────────────────────────
+
+  build-linux-amd64:
+    name: Build (linux/amd64)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ALSA headers
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-linux-amd64 ./cmd/
+
+      - name: Package
+        run: mv muzak-linux-amd64 muzak && tar -czf muzak-linux-amd64.tar.gz muzak
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-linux-amd64
+          path: muzak-linux-amd64.tar.gz
+          retention-days: 1
+
+  # ── build-linux-arm64 ───────────────────────────────────────────────────────
+
+  build-linux-arm64:
+    name: Build (linux/arm64)
+    needs: test
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ALSA headers
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOARCH: arm64
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-linux-arm64 ./cmd/
+
+      - name: Package
+        run: mv muzak-linux-arm64 muzak && tar -czf muzak-linux-arm64.tar.gz muzak
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-linux-arm64
+          path: muzak-linux-arm64.tar.gz
+          retention-days: 1
+
   # ── release ─────────────────────────────────────────────────────────────────
-  # Downloads both tarballs and publishes a versioned GitHub release.
 
   release:
     name: Release
-    needs: [build-arm64, build-amd64]
+    needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download arm64 tarball
+      - name: Download darwin-arm64 tarball
         uses: actions/download-artifact@v4
         with:
           name: muzak-darwin-arm64
 
-      - name: Download amd64 tarball
+      - name: Download darwin-amd64 tarball
         uses: actions/download-artifact@v4
         with:
           name: muzak-darwin-amd64
+
+      - name: Download linux-amd64 tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-linux-amd64
+
+      - name: Download linux-arm64 tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-linux-arm64
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -116,6 +191,8 @@ jobs:
           files: |
             muzak-darwin-arm64.tar.gz
             muzak-darwin-amd64.tar.gz
+            muzak-linux-amd64.tar.gz
+            muzak-linux-arm64.tar.gz
 
   # ── update-tap ──────────────────────────────────────────────────────────────
   # Computes SHA256 of each release tarball and pushes an updated formula
@@ -126,56 +203,70 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Download arm64 tarball
+      - name: Download tarballs
         run: |
-          curl --retry 5 --retry-delay 5 -fsSL \
-            "https://github.com/ronelliott/muzak/releases/download/${{ github.ref_name }}/muzak-darwin-arm64.tar.gz" \
-            -o muzak-darwin-arm64.tar.gz
-
-      - name: Download amd64 tarball
-        run: |
-          curl --retry 5 --retry-delay 5 -fsSL \
-            "https://github.com/ronelliott/muzak/releases/download/${{ github.ref_name }}/muzak-darwin-amd64.tar.gz" \
-            -o muzak-darwin-amd64.tar.gz
+          for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            curl --retry 5 --retry-delay 5 -fsSL \
+              "https://github.com/ronelliott/muzak/releases/download/${{ github.ref_name }}/muzak-${target}.tar.gz" \
+              -o "muzak-${target}.tar.gz"
+          done
 
       - name: Compute SHA256s
         id: sha
         run: |
-          echo "arm64=$(sha256sum muzak-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "amd64=$(sha256sum muzak-darwin-amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "darwin_arm64=$(sha256sum muzak-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "darwin_amd64=$(sha256sum muzak-darwin-amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "linux_amd64=$(sha256sum muzak-linux-amd64.tar.gz | awk '{print $1}')"   >> "$GITHUB_OUTPUT"
+          echo "linux_arm64=$(sha256sum muzak-linux-arm64.tar.gz | awk '{print $1}')"   >> "$GITHUB_OUTPUT"
 
       - name: Clone tap repo
-        env:
-          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-        run: |
-          gh auth setup-git
-          git clone https://github.com/ronelliott/homebrew-muzak.git tap
+        uses: actions/checkout@v4
+        with:
+          repository: ronelliott/homebrew-muzak
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
 
       - name: Write formula
         env:
           VERSION: ${{ github.ref_name }}
-          SHA_ARM64: ${{ steps.sha.outputs.arm64 }}
-          SHA_AMD64: ${{ steps.sha.outputs.amd64 }}
+          SHA_DARWIN_ARM64: ${{ steps.sha.outputs.darwin_arm64 }}
+          SHA_DARWIN_AMD64: ${{ steps.sha.outputs.darwin_amd64 }}
+          SHA_LINUX_AMD64: ${{ steps.sha.outputs.linux_amd64 }}
+          SHA_LINUX_ARM64: ${{ steps.sha.outputs.linux_arm64 }}
         run: |
           VERSION_NUM="${VERSION#v}"
           cat > tap/Formula/muzak.rb <<EOF
           class Muzak < Formula
-            desc "Minimalist terminal-based music player for macOS"
+            desc "Minimalist terminal-based music player"
             homepage "https://github.com/ronelliott/muzak"
             version "${VERSION_NUM}"
             license "MIT"
 
-            on_arm do
-              url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-arm64.tar.gz"
-              sha256 "${SHA_ARM64}"
+            on_macos do
+              on_arm do
+                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-arm64.tar.gz"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+
+              on_intel do
+                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-amd64.tar.gz"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
             end
 
-            on_intel do
-              url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-amd64.tar.gz"
-              sha256 "${SHA_AMD64}"
-            end
+            on_linux do
+              depends_on "alsa-lib"
 
-            depends_on :macos
+              on_intel do
+                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-linux-amd64.tar.gz"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+
+              on_arm do
+                url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-linux-arm64.tar.gz"
+                sha256 "${SHA_LINUX_ARM64}"
+              end
+            end
 
             def install
               bin.install "muzak"
