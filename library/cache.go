@@ -118,6 +118,55 @@ func saveDiskCache(c *diskCache) {
 	}
 }
 
+// underDir reports whether path is exactly sourceDir or is directly nested
+// under it (i.e. separated by a path separator), preventing false matches
+// against sibling directories sharing a common prefix (e.g. /music vs /music2).
+func underDir(path, sourceDir string) bool {
+	if path == sourceDir {
+		return true
+	}
+	prefix := sourceDir + string(filepath.Separator)
+	return len(path) > len(prefix) && path[:len(prefix)] == prefix
+}
+
+// LoadFromCache returns tracks for the given source paths directly from the
+// disk cache, without re-scanning. Missing or unrecognised entries are silently
+// skipped. Results are deduplicated before returning. Use this for instant
+// startup when sources are already cached.
+func LoadFromCache(paths []string) []*Track {
+	c := loadDiskCache()
+	var tracks []*Track
+	for _, p := range paths {
+		for sourcePath, entry := range c.Entries {
+			if underDir(sourcePath, p) {
+				tracks = append(tracks, reconstructTracks(sourcePath, entry)...)
+			}
+		}
+	}
+	return deduplicate(tracks)
+}
+
+// pruneCache removes all cache entries under the given source directory, then
+// saves the updated cache to disk.
+func pruneCache(sourceDir string) {
+	c := loadDiskCache()
+	for path := range c.Entries {
+		if underDir(path, sourceDir) {
+			delete(c.Entries, path)
+		}
+	}
+	saveDiskCache(c)
+}
+
+// clearCache deletes the entire cache file.
+func clearCache() {
+	path, err := cacheFilePath()
+	if err != nil {
+		return
+	}
+	os.Remove(path) //nolint:errcheck
+}
+
 // buildCacheEntry converts freshly-scanned tracks into a cacheEntry using
 // the provided FileInfo for the fingerprint.
 func buildCacheEntry(info fs.FileInfo, tracks []*Track) *cacheEntry {
