@@ -40,6 +40,11 @@ func LoadSources() *Sources {
 		return &Sources{Version: sourcesVersion}
 	}
 
+	if s.Version != sourcesVersion {
+		fmt.Fprintf(os.Stderr, "muzak: warning: unsupported sources version %d (expected %d); ignoring\n", s.Version, sourcesVersion)
+		return &Sources{Version: sourcesVersion}
+	}
+
 	return s
 }
 
