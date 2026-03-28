@@ -298,6 +298,9 @@ jobs:
   # ── notify-tap ──────────────────────────────────────────────────────────────
   # Fires a repository_dispatch to homebrew-muzak, which owns the formula
   # update logic in its own workflow.
+  # TAP_GITHUB_TOKEN requirements:
+  #   - Fine-grained PAT: Contents: write on ronelliott/homebrew-muzak
+  #   - Classic PAT: repo scope
 
   notify-tap:
     name: Notify Homebrew Tap
