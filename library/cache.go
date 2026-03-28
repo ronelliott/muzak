@@ -202,7 +202,13 @@ func reconstructTracks(sourcePath string, e *cacheEntry) []*Track {
 			ZipEntry: ct.ZipEntry,
 			Format:   ct.Format,
 		}
-		if ct.ZipEntry == "" {
+		if IsSMBPath(sourcePath) {
+			if ct.ZipEntry == "" {
+				t.Opener = smbFileOpener(sourcePath)
+			} else {
+				t.Opener = smbZipOpener(sourcePath, ct.ZipEntry)
+			}
+		} else if ct.ZipEntry == "" {
 			path := sourcePath
 			t.Opener = func() (io.ReadSeekCloser, error) { return os.Open(path) }
 		} else {

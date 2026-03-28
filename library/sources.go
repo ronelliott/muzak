@@ -71,28 +71,38 @@ func (s *Sources) Save() error {
 	return nil
 }
 
-// Add resolves path to an absolute path and appends it to the sources list if
-// not already present. The caller is responsible for scanning and saving.
+// Add resolves path to an absolute path (or keeps SMB URLs as-is) and appends
+// it to the sources list if not already present. The caller is responsible for
+// scanning and saving.
 func (s *Sources) Add(path string) error {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
+	canonical := path
+	if !IsSMBPath(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve path: %w", err)
+		}
+		canonical = abs
 	}
 	for _, p := range s.Paths {
-		if p == abs {
+		if p == canonical {
 			return nil // already present
 		}
 	}
-	s.Paths = append(s.Paths, abs)
+	s.Paths = append(s.Paths, canonical)
 	return nil
 }
 
-// Remove removes path (resolved to absolute) from the sources list and prunes
-// its entries from the disk cache. The caller is responsible for saving.
+// Remove removes path (resolved to absolute, or kept as-is for SMB URLs) from
+// the sources list and prunes its entries from the disk cache. The caller is
+// responsible for saving.
 func (s *Sources) Remove(path string) error {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
+	abs := path
+	if !IsSMBPath(path) {
+		var err error
+		abs, err = filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve path: %w", err)
+		}
 	}
 
 	updated := s.Paths[:0]

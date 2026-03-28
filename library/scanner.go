@@ -24,10 +24,10 @@ type nopCloser struct{ io.ReadSeeker }
 
 func (n nopCloser) Close() error { return nil }
 
-// Scan recursively walks each directory for .flac/.wav files and .zip archives
-// that contain them. Metadata is loaded from a per-file cache when the source
-// file's mtime and size are unchanged; otherwise the file is scanned and the
-// cache is updated.
+// Scan recursively walks each directory (or SMB URL) for .flac/.wav files and
+// .zip archives that contain them. Metadata is loaded from a per-file cache
+// when the source file's mtime and size are unchanged; otherwise the file is
+// scanned and the cache is updated.
 func Scan(dirs []string) ([]*Track, error) {
 	old := loadDiskCache()
 	newCache := &diskCache{
@@ -38,6 +38,15 @@ func Scan(dirs []string) ([]*Track, error) {
 	var tracks []*Track
 
 	for _, dir := range dirs {
+		if IsSMBPath(dir) {
+			ts, err := scanSMB(dir)
+			if err != nil {
+				return nil, fmt.Errorf("scan SMB %s: %w", dir, err)
+			}
+			tracks = append(tracks, ts...)
+			continue
+		}
+
 		abs, err := filepath.Abs(dir)
 		if err != nil {
 			return nil, fmt.Errorf("resolve path %s: %w", dir, err)
