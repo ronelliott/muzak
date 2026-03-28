@@ -145,11 +145,11 @@ jobs:
           echo "amd64=$(sha256sum muzak-darwin-amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Clone tap repo
-        uses: actions/checkout@v4
-        with:
-          repository: ronelliott/homebrew-muzak
-          token: ${{ secrets.TAP_GITHUB_TOKEN }}
-          path: tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          gh auth setup-git
+          git clone https://github.com/ronelliott/homebrew-muzak.git tap
 
       - name: Write formula
         env:
@@ -189,6 +189,8 @@ jobs:
           EOF
 
       - name: Commit and push
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
           cd tap
           git config user.name "github-actions[bot]"
