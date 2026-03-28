@@ -50,11 +50,14 @@ jobs:
           CGO_ENABLED: "1"
         run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-arm64 .
 
+      - name: Package
+        run: tar -czf muzak-darwin-arm64.tar.gz muzak-darwin-arm64
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: muzak-darwin-arm64
-          path: muzak-darwin-arm64
+          path: muzak-darwin-arm64.tar.gz
           retention-days: 1
 
   # ── build-amd64 ─────────────────────────────────────────────────────────────
@@ -80,40 +83,36 @@ jobs:
           SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
         run: go build -ldflags="-s -w -X main.version=${{ github.sha }}" -o muzak-darwin-amd64 .
 
+      - name: Package
+        run: tar -czf muzak-darwin-amd64.tar.gz muzak-darwin-amd64
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: muzak-darwin-amd64
-          path: muzak-darwin-amd64
+          path: muzak-darwin-amd64.tar.gz
           retention-days: 1
 
   # ── release ─────────────────────────────────────────────────────────────────
-  # Downloads both native binaries, combines them into a universal binary with
-  # lipo, then creates or overwrites the rolling "latest" pre-release.
+  # Downloads both tarballs and creates or overwrites the rolling "latest" pre-release.
 
   release:
     name: Release
     needs: [build-arm64, build-amd64]
     if: github.event_name == 'push'
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download arm64 binary
+      - name: Download arm64 tarball
         uses: actions/download-artifact@v4
         with:
           name: muzak-darwin-arm64
 
-      - name: Download amd64 binary
+      - name: Download amd64 tarball
         uses: actions/download-artifact@v4
         with:
           name: muzak-darwin-amd64
-
-      - name: Create universal binary
-        run: lipo -create -output muzak-darwin-universal muzak-darwin-arm64 muzak-darwin-amd64
-
-      - name: Make binaries executable
-        run: chmod +x muzak-darwin-arm64 muzak-darwin-amd64 muzak-darwin-universal
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -127,17 +126,10 @@ jobs:
             **Commit:** ${{ github.sha }}
             **Date:** ${{ github.event.head_commit.timestamp }}
 
-            | Binary | Architecture |
-            |--------|-------------|
-            | `muzak-darwin-universal` | Universal (arm64 + amd64) — recommended |
-            | `muzak-darwin-arm64` | Apple Silicon (M1/M2/M3) |
-            | `muzak-darwin-amd64` | Intel |
-
-            After downloading, mark the binary executable:
-            ```sh
-            chmod +x muzak-darwin-universal
-            ```
+            | Tarball | Architecture |
+            |---------|-------------|
+            | `muzak-darwin-arm64.tar.gz` | Apple Silicon (M1/M2/M3) |
+            | `muzak-darwin-amd64.tar.gz` | Intel |
           files: |
-            muzak-darwin-universal
-            muzak-darwin-arm64
-            muzak-darwin-amd64
+            muzak-darwin-arm64.tar.gz
+            muzak-darwin-amd64.tar.gz

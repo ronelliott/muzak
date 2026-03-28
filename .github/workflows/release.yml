@@ -46,11 +46,14 @@ jobs:
           CGO_ENABLED: "1"
         run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-arm64 .
 
+      - name: Package
+        run: tar -czf muzak-darwin-arm64.tar.gz muzak-darwin-arm64
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: muzak-darwin-arm64
-          path: muzak-darwin-arm64
+          path: muzak-darwin-arm64.tar.gz
           retention-days: 1
 
   # ── build-amd64 ─────────────────────────────────────────────────────────────
@@ -74,39 +77,35 @@ jobs:
           SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
         run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-amd64 .
 
+      - name: Package
+        run: tar -czf muzak-darwin-amd64.tar.gz muzak-darwin-amd64
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: muzak-darwin-amd64
-          path: muzak-darwin-amd64
+          path: muzak-darwin-amd64.tar.gz
           retention-days: 1
 
   # ── release ─────────────────────────────────────────────────────────────────
-  # Downloads both native binaries, combines them into a universal binary with
-  # lipo, then creates a versioned GitHub release from the tag.
+  # Downloads both tarballs and publishes a versioned GitHub release.
 
   release:
     name: Release
     needs: [build-arm64, build-amd64]
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download arm64 binary
+      - name: Download arm64 tarball
         uses: actions/download-artifact@v4
         with:
           name: muzak-darwin-arm64
 
-      - name: Download amd64 binary
+      - name: Download amd64 tarball
         uses: actions/download-artifact@v4
         with:
           name: muzak-darwin-amd64
-
-      - name: Create universal binary
-        run: lipo -create -output muzak-darwin-universal muzak-darwin-arm64 muzak-darwin-amd64
-
-      - name: Make binaries executable
-        run: chmod +x muzak-darwin-arm64 muzak-darwin-amd64 muzak-darwin-universal
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -115,6 +114,84 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            muzak-darwin-universal
-            muzak-darwin-arm64
-            muzak-darwin-amd64
+            muzak-darwin-arm64.tar.gz
+            muzak-darwin-amd64.tar.gz
+
+  # ── update-tap ──────────────────────────────────────────────────────────────
+  # Computes SHA256 of each release tarball and pushes an updated formula
+  # to ronelliott/homebrew-muzak.
+
+  update-tap:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download arm64 tarball
+        run: |
+          curl --retry 5 --retry-delay 5 -fsSL \
+            "https://github.com/ronelliott/muzak/releases/download/${{ github.ref_name }}/muzak-darwin-arm64.tar.gz" \
+            -o muzak-darwin-arm64.tar.gz
+
+      - name: Download amd64 tarball
+        run: |
+          curl --retry 5 --retry-delay 5 -fsSL \
+            "https://github.com/ronelliott/muzak/releases/download/${{ github.ref_name }}/muzak-darwin-amd64.tar.gz" \
+            -o muzak-darwin-amd64.tar.gz
+
+      - name: Compute SHA256s
+        id: sha
+        run: |
+          echo "arm64=$(sha256sum muzak-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "amd64=$(sha256sum muzak-darwin-amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Clone tap repo
+        run: |
+          git clone https://x-access-token:${{ secrets.TAP_GITHUB_TOKEN }}@github.com/ronelliott/homebrew-muzak.git tap
+
+      - name: Write formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          VERSION_NUM: ${{ github.ref_name }}
+          SHA_ARM64: ${{ steps.sha.outputs.arm64 }}
+          SHA_AMD64: ${{ steps.sha.outputs.amd64 }}
+        run: |
+          VERSION_NUM="${VERSION#v}"
+          cat > tap/Formula/muzak.rb <<EOF
+          class Muzak < Formula
+            desc "Minimalist terminal-based music player for macOS"
+            homepage "https://github.com/ronelliott/muzak"
+            version "${VERSION_NUM}"
+            license "MIT"
+
+            on_arm do
+              url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-arm64.tar.gz"
+              sha256 "${SHA_ARM64}"
+            end
+
+            on_intel do
+              url "https://github.com/ronelliott/muzak/releases/download/${VERSION}/muzak-darwin-amd64.tar.gz"
+              sha256 "${SHA_AMD64}"
+            end
+
+            depends_on :macos
+
+            def install
+              binary = Hardware::CPU.arm? ? "muzak-darwin-arm64" : "muzak-darwin-amd64"
+              bin.install binary => "muzak"
+              chmod 0555, bin/"muzak"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/muzak --version")
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/muzak.rb
+          git diff --staged --quiet || git commit -m "chore: update muzak to ${{ github.ref_name }}"
+          git push
