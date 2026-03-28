@@ -130,7 +130,11 @@ func (m *Model) renderLibrary(sb *strings.Builder) {
 // ─── controls & now-playing ───────────────────────────────────────────────────
 
 func (m *Model) renderControls() string {
-	return styleControls.Render(truncate(helpLine, m.width))
+	line := helpLine
+	if m.mode == modeLibrary {
+		line = helpLineLibrary
+	}
+	return styleControls.Render(truncate(line, m.width))
 }
 
 func (m *Model) renderNowPlaying() string {

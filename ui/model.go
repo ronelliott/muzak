@@ -148,10 +148,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// ctrl+c always quits, even while typing in the library filter.
 	if key == "ctrl+c" {
-		if m.current != nil {
-			m.backend.Stop()
-			m.current.Close()
-		}
+		m.stopAndClose()
 		return m, tea.Quit
 	}
 
@@ -160,10 +157,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.mode != modeLibrary {
 		switch key {
 		case keyQuit:
-			if m.current != nil {
-				m.backend.Stop()
-				m.current.Close()
-			}
+			m.stopAndClose()
 			return m, tea.Quit
 
 		case keyPause:
@@ -383,6 +377,13 @@ func (m *Model) cmdLoadAndPlay() tea.Cmd {
 	return func() tea.Msg {
 		<-pb.Done()
 		return trackDoneMsg{id: id}
+	}
+}
+
+func (m *Model) stopAndClose() {
+	if m.current != nil {
+		m.backend.Stop()
+		m.current.Close()
 	}
 }
 

@@ -66,15 +66,14 @@ Playback starts automatically with the first track found.
 | `-` | Volume down |
 | `s` | Toggle shuffle |
 | `r` | Toggle repeat |
-| `l` | Open / close library |
+| `Esc` | Open / close library |
 | `↑` / `↓` | Navigate history or library |
 | `Enter` | Play from selected track |
-| `Esc` | Close library |
 | `q` | Quit |
 
 ## Library overlay
 
-Press `l` to open the library overlay, which lists all discovered tracks. Type to filter by artist or title. Press `Enter` to start playing from the selected track. Press `Esc` or `l` again to return to the history view.
+Press `Esc` to open the library overlay, which lists all discovered tracks. Type to filter by artist or title. Press `Enter` to start playing from the selected track. Press `Esc` again to return to the history view.
 
 ## History
 
