@@ -1,8 +1,10 @@
 # muzak
 
-A no-frills terminal music player for macOS. Point it at a directory, it plays your music. No library management, no database, no daemon, no configuration file to learn. Just a keyboard-driven interface that stays out of the way.
+A no-frills terminal music player for macOS and Linux. Point it at a directory, it plays your music. No library management, no database, no daemon, no configuration file to learn. Just a keyboard-driven interface that stays out of the way.
 
 Plays FLAC and WAV files, including tracks stored inside ZIP archives.
+
+> **Linux support note:** Linux binaries are tested via automated CI only and have not been verified on actual hardware. Bug reports welcome.
 
 ## Features
 
@@ -18,7 +20,7 @@ Plays FLAC and WAV files, including tracks stored inside ZIP archives.
 ## Installation
 
 ```sh
-go install github.com/ronelliott/muzak@latest
+go install github.com/ronelliott/muzak/cmd@latest
 ```
 
 Or build from source:
@@ -26,10 +28,13 @@ Or build from source:
 ```sh
 git clone https://github.com/ronelliott/muzak
 cd muzak
-go build -o muzak .
+go build -o muzak ./cmd/
 ```
 
-Requires Go 1.26+. No external system dependencies (audio output uses CoreAudio via CGo, which is part of the macOS SDK).
+Requires Go 1.26+.
+
+- **macOS:** No external system dependencies — audio uses CoreAudio via CGo, which is part of the macOS SDK.
+- **Linux:** Requires ALSA (`libasound2-dev` on Debian/Ubuntu, `alsa-lib-devel` on Fedora/RHEL). Homebrew on Linux installs this automatically.
 
 ## Usage
 
@@ -87,9 +92,10 @@ Track metadata is cached in `$UserCacheDir/muzak/library.json` (typically `~/Lib
 ## Architecture
 
 ```
-audio/           Abstract playback backend interface
-audio/beepbackend/  macOS implementation via gopxl/beep + oto/CoreAudio
-library/         File scanner, metadata reader, track cache
-playlist/        Playback queue, shuffle, repeat, history
-ui/              BubbleTea terminal interface
+audio/              Abstract playback backend interface
+audio/beepbackend/  Platform implementation via gopxl/beep + oto
+                    (CoreAudio on macOS, ALSA on Linux)
+library/            File scanner, metadata reader, track cache
+playlist/           Playback queue, shuffle, repeat, history
+ui/                 BubbleTea terminal interface
 ```
