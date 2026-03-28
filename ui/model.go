@@ -382,8 +382,12 @@ func (m *Model) cmdLoadAndPlay() tea.Cmd {
 
 func (m *Model) stopAndClose() {
 	if m.current != nil {
+		m.trackID++ // invalidate any in-flight trackDoneMsg
 		m.backend.Stop()
 		m.current.Close()
+		m.current = nil
+		m.position = 0
+		m.duration = 0
 	}
 }
 

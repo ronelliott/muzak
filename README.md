@@ -69,7 +69,8 @@ Playback starts automatically with the first track found.
 | `Esc` | Open / close library |
 | `↑` / `↓` | Navigate history or library |
 | `Enter` | Play from selected track |
-| `q` | Quit |
+| `q` | Quit (player view only) |
+| `ctrl+c` | Quit (anywhere) |
 
 ## Library overlay
 
