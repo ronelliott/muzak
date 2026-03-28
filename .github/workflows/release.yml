@@ -10,8 +10,27 @@ jobs:
   # ── test ────────────────────────────────────────────────────────────────────
 
   test:
-    name: Test
+    name: Test (macOS)
     runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    env:
+      CGO_ENABLED: "0"
     steps:
       - uses: actions/checkout@v4
 
@@ -153,11 +172,78 @@ jobs:
           path: muzak-linux-arm64.tar.gz
           retention-days: 1
 
+  # ── build-windows-amd64 ─────────────────────────────────────────────────────
+
+  build-windows-amd64:
+    name: Build (windows/amd64)
+    needs: [test, test-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOARCH: amd64
+          GOOS: windows
+          CGO_ENABLED: "0"
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-windows-amd64.exe ./cmd/
+
+      - name: Package
+        run: |
+          Move-Item muzak-windows-amd64.exe muzak.exe
+          Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-amd64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-windows-amd64
+          path: muzak-windows-amd64.zip
+          retention-days: 1
+
+  # ── build-windows-arm64 ─────────────────────────────────────────────────────
+  # Cross-compiled from amd64; no CGO required for Windows.
+
+  build-windows-arm64:
+    name: Build (windows/arm64)
+    needs: [test, test-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOARCH: arm64
+          GOOS: windows
+          CGO_ENABLED: "0"
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-windows-arm64.exe ./cmd/
+
+      - name: Package
+        run: |
+          Move-Item muzak-windows-arm64.exe muzak.exe
+          Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-arm64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzak-windows-arm64
+          path: muzak-windows-arm64.zip
+          retention-days: 1
+
   # ── release ─────────────────────────────────────────────────────────────────
 
   release:
     name: Release
-    needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64]
+    needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64, build-windows-amd64, build-windows-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -182,6 +268,16 @@ jobs:
         with:
           name: muzak-linux-arm64
 
+      - name: Download windows-amd64 zip
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-windows-amd64
+
+      - name: Download windows-arm64 zip
+        uses: actions/download-artifact@v4
+        with:
+          name: muzak-windows-arm64
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -193,10 +289,12 @@ jobs:
             muzak-darwin-amd64.tar.gz
             muzak-linux-amd64.tar.gz
             muzak-linux-arm64.tar.gz
+            muzak-windows-amd64.zip
+            muzak-windows-arm64.zip
 
   # ── update-tap ──────────────────────────────────────────────────────────────
-  # Computes SHA256 of each release tarball and pushes an updated formula
-  # to ronelliott/homebrew-muzak.
+  # Computes SHA256 of macOS/Linux tarballs and pushes an updated formula.
+  # Windows is not distributed via Homebrew.
 
   update-tap:
     name: Update Homebrew Tap
