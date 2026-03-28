@@ -146,48 +146,54 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	// Keys that work in any mode.
-	switch key {
-	case "ctrl+c", keyQuit:
-		if m.current != nil {
-			m.backend.Stop()
-			m.current.Close()
-		}
+	// ctrl+c always quits, even while typing in the library filter.
+	if key == "ctrl+c" {
+		m.stopAndClose()
 		return m, tea.Quit
+	}
 
-	case keyPause:
-		if m.current != nil {
-			if m.current.IsPlaying() {
-				m.current.Pause()
-			} else {
-				m.current.Play()
+	// Player control shortcuts are suppressed while the library filter is active
+	// so that typed characters go to the search box instead.
+	if m.mode != modeLibrary {
+		switch key {
+		case keyQuit:
+			m.stopAndClose()
+			return m, tea.Quit
+
+		case keyPause:
+			if m.current != nil {
+				if m.current.IsPlaying() {
+					m.current.Pause()
+				} else {
+					m.current.Play()
+				}
 			}
+			return m, nil
+
+		case keyVolUp:
+			m.volume = clamp(m.volume+volumeStep, 0, 1)
+			if m.current != nil {
+				m.current.SetVolume(m.volume)
+			}
+			settings.Save(settings.Settings{Volume: m.volume})
+			return m, nil
+
+		case keyVolDown:
+			m.volume = clamp(m.volume-volumeStep, 0, 1)
+			if m.current != nil {
+				m.current.SetVolume(m.volume)
+			}
+			settings.Save(settings.Settings{Volume: m.volume})
+			return m, nil
+
+		case keyShuffle:
+			m.playlist.SetShuffle(!m.playlist.Shuffle())
+			return m, nil
+
+		case keyRepeat:
+			m.playlist.SetRepeat(!m.playlist.Repeat())
+			return m, nil
 		}
-		return m, nil
-
-	case keyVolUp:
-		m.volume = clamp(m.volume+volumeStep, 0, 1)
-		if m.current != nil {
-			m.current.SetVolume(m.volume)
-		}
-		settings.Save(settings.Settings{Volume: m.volume})
-		return m, nil
-
-	case keyVolDown:
-		m.volume = clamp(m.volume-volumeStep, 0, 1)
-		if m.current != nil {
-			m.current.SetVolume(m.volume)
-		}
-		settings.Save(settings.Settings{Volume: m.volume})
-		return m, nil
-
-	case keyShuffle:
-		m.playlist.SetShuffle(!m.playlist.Shuffle())
-		return m, nil
-
-	case keyRepeat:
-		m.playlist.SetRepeat(!m.playlist.Repeat())
-		return m, nil
 	}
 
 	if m.mode == modeLibrary {
@@ -260,7 +266,7 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	visLines := m.libraryVisibleLines()
 
 	switch {
-	case key == "esc" || key == keyLibrary:
+	case key == keyLibrary:
 		m.mode = modePlayer
 
 	case key == "up":
@@ -298,6 +304,10 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.libSearch = string(r[:len(r)-1])
 			m.updateLibFilter()
 		}
+
+	case msg.Type == tea.KeySpace:
+		m.libSearch += " "
+		m.updateLibFilter()
 
 	case msg.Type == tea.KeyRunes:
 		m.libSearch += string(msg.Runes)
@@ -367,6 +377,17 @@ func (m *Model) cmdLoadAndPlay() tea.Cmd {
 	return func() tea.Msg {
 		<-pb.Done()
 		return trackDoneMsg{id: id}
+	}
+}
+
+func (m *Model) stopAndClose() {
+	if m.current != nil {
+		m.trackID++ // invalidate any in-flight trackDoneMsg
+		m.backend.Stop()
+		m.current.Close()
+		m.current = nil
+		m.position = 0
+		m.duration = 0
 	}
 }
 

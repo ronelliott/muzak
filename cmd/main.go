@@ -48,10 +48,11 @@ Controls:
   s            Shuffle
   r            Repeat
   + / -        Volume up / down
-  l / esc      Toggle library overlay
+  esc          Toggle library overlay
   ↑ / ↓        Navigate
   ↵            Play selected
-  q / ctrl+c   Quit`),
+  q            Quit (player view)
+  ctrl+c       Quit (anywhere)`),
 		snek.WithVersion(getVersion()),
 		snek.WithSimpleRunE(runPlay),
 		snek.WithSubCommandGenerator(cmdlibrary.NewCommand),
