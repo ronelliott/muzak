@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/hirochachacha/go-smb2"
@@ -22,7 +23,7 @@ func IsSMBPath(s string) bool {
 
 // smbConfig holds the parsed components of an SMB URL.
 type smbConfig struct {
-	host    string // host or host:port
+	host    string // host:port (always has port)
 	user    string
 	pass    string
 	share   string
@@ -30,6 +31,8 @@ type smbConfig struct {
 }
 
 // parseSMBURL parses smb://user:pass@host/share[/subpath] into its components.
+// The hostname is normalised to lowercase; subpath leading/trailing slashes are
+// stripped; the default port 445 is appended when no port is specified.
 func parseSMBURL(rawURL string) (smbConfig, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -39,7 +42,10 @@ func parseSMBURL(rawURL string) (smbConfig, error) {
 		return smbConfig{}, fmt.Errorf("not an SMB URL: %s", rawURL)
 	}
 
-	host := u.Hostname()
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return smbConfig{}, fmt.Errorf("SMB URL missing hostname: %s", rawURL)
+	}
 	port := u.Port()
 	if port == "" {
 		port = "445"
@@ -58,7 +64,7 @@ func parseSMBURL(rawURL string) (smbConfig, error) {
 	share := parts[0]
 	subpath := ""
 	if len(parts) == 2 {
-		subpath = parts[1]
+		subpath = strings.Trim(parts[1], "/") // normalise away leading/trailing slashes
 	}
 
 	if share == "" {
@@ -103,16 +109,18 @@ func connectSMB(cfg smbConfig) (*smb2.Share, func(), error) {
 	}
 
 	teardown := func() {
-		share.Umount()        //nolint:errcheck
-		session.Logoff()      //nolint:errcheck
+		share.Umount()   //nolint:errcheck
+		session.Logoff() //nolint:errcheck
 		conn.Close()
 	}
 	return share, teardown, nil
 }
 
 // scanSMB scans an SMB URL recursively for audio files and returns tracks.
-// The cache key for each file is its full smb:// URL.
-func scanSMB(smbURL string) ([]*Track, error) {
+// Discovered entries are written into newCache using redacted (password-free)
+// cache keys; old provides fingerprints for cache reuse. The caller is
+// responsible for saving newCache.
+func scanSMB(smbURL string, old *diskCache, newCache *diskCache) ([]*Track, error) {
 	cfg, err := parseSMBURL(smbURL)
 	if err != nil {
 		return nil, err
@@ -124,24 +132,13 @@ func scanSMB(smbURL string) ([]*Track, error) {
 	}
 	defer teardown()
 
-	old := loadDiskCache()
-	newCache := &diskCache{
-		Version: cacheVersion,
-		Entries: make(map[string]*cacheEntry, len(old.Entries)),
-	}
-
-	// Preserve existing non-SMB entries and SMB entries from other sources.
-	for k, v := range old.Entries {
-		newCache.Entries[k] = v
-	}
-
 	root := cfg.subpath
 	if root == "" {
 		root = "."
 	}
 
-	// Build the URL prefix for cache keys: smb://user:pass@host/share/
-	urlPrefix := smbURLPrefix(cfg)
+	// Cache keys use the redacted prefix so credentials are not persisted to disk.
+	redactedPrefix := smbRedactedURLPrefix(cfg)
 
 	var tracks []*Track
 
@@ -159,23 +156,25 @@ func scanSMB(smbURL string) ([]*Track, error) {
 			return nil
 		}
 
-		// Full SMB URL for this file.
-		filePath := relPath
-		if root != "." {
-			filePath = root + "/" + relPath
+		// Build the share-relative path and the redacted cache-key URL.
+		var sharePath string
+		if root == "." {
+			sharePath = relPath
+		} else {
+			sharePath = path.Join(root, relPath)
 		}
-		fileURL := urlPrefix + filePath
+		fileURL := redactedPrefix + sharePath
 
 		ext := strings.ToLower(filePathExt(relPath))
 		switch ext {
 		case ".flac", ".wav":
-			ts, entry := cachedOrScanSMBFile(fileURL, share, filePath, old)
+			ts, entry := cachedOrScanSMBFile(fileURL, share, sharePath, cfg, old)
 			tracks = append(tracks, ts...)
 			if entry != nil {
 				newCache.Entries[fileURL] = entry
 			}
 		case ".zip":
-			ts, entry := cachedOrScanSMBZip(fileURL, share, filePath, old)
+			ts, entry := cachedOrScanSMBZip(fileURL, share, sharePath, cfg, old)
 			tracks = append(tracks, ts...)
 			if entry != nil {
 				newCache.Entries[fileURL] = entry
@@ -187,22 +186,79 @@ func scanSMB(smbURL string) ([]*Track, error) {
 		return nil, fmt.Errorf("walk SMB share: %w", err)
 	}
 
-	saveDiskCache(newCache)
 	return deduplicate(tracks), nil
 }
 
-// smbURLPrefix returns "smb://user:pass@host/share/" for use as a cache key prefix.
+// smbURLPrefix returns "smb://[user:pass@]host/share/" for internal use
+// (e.g. building openers). Port 445 is omitted from the authority.
 func smbURLPrefix(cfg smbConfig) string {
-	host, port, _ := net.SplitHostPort(cfg.host)
-	authority := host
-	if port != "445" {
-		authority = net.JoinHostPort(host, port)
-	}
+	authority := smbAuthority(cfg.host, true)
 	creds := ""
 	if cfg.user != "" {
-		creds = url.UserPassword(cfg.user, cfg.pass).String() + "@"
+		if cfg.pass != "" {
+			creds = url.UserPassword(cfg.user, cfg.pass).String() + "@"
+		} else {
+			creds = url.User(cfg.user).String() + "@"
+		}
 	}
 	return fmt.Sprintf("smb://%s%s/%s/", creds, authority, cfg.share)
+}
+
+// smbRedactedURLPrefix returns "smb://[user@]host/share/" with the password
+// omitted. Used for cache keys and Track.Path to avoid persisting credentials.
+func smbRedactedURLPrefix(cfg smbConfig) string {
+	authority := smbAuthority(cfg.host, true)
+	creds := ""
+	if cfg.user != "" {
+		creds = url.User(cfg.user).String() + "@"
+	}
+	return fmt.Sprintf("smb://%s%s/%s/", creds, authority, cfg.share)
+}
+
+// smbAuthority returns the host (and optional port) portion of an SMB URL
+// authority. When omitDefault is true the default port 445 is stripped.
+// IPv6 addresses are always wrapped in brackets.
+func smbAuthority(hostPort string, omitDefault bool) string {
+	host, port, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return hostPort
+	}
+	if omitDefault && port == "445" {
+		if strings.Contains(host, ":") { // IPv6
+			return "[" + host + "]"
+		}
+		return host
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// smbRedactedPath converts a full SMB URL (possibly with password) to its
+// redacted canonical form — the same form used as a cache key.
+func smbRedactedPath(rawURL string) string {
+	cfg, err := parseSMBURL(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	prefix := smbRedactedURLPrefix(cfg) // "smb://user@host/share/"
+	if cfg.subpath != "" {
+		return prefix + cfg.subpath
+	}
+	return strings.TrimSuffix(prefix, "/")
+}
+
+// SMBRedactPath returns the SMB URL with the password removed (username kept).
+// Safe for use in user-facing messages and log output.
+func SMBRedactPath(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return rawURL
+	}
+	if username := u.User.Username(); username != "" {
+		u.User = url.User(username)
+	} else {
+		u.User = nil
+	}
+	return u.String()
 }
 
 // filePathExt returns the extension of a slash-separated path.
@@ -217,7 +273,7 @@ func filePathExt(p string) string {
 
 // cachedOrScanSMBFile returns tracks for a plain audio file on an SMB share,
 // using the cache when the file's fingerprint matches.
-func cachedOrScanSMBFile(fileURL string, share *smb2.Share, sharePath string, c *diskCache) ([]*Track, *cacheEntry) {
+func cachedOrScanSMBFile(fileURL string, share *smb2.Share, sharePath string, cfg smbConfig, c *diskCache) ([]*Track, *cacheEntry) {
 	info, err := share.Stat(sharePath)
 	if err != nil {
 		return nil, nil
@@ -248,7 +304,7 @@ func cachedOrScanSMBFile(fileURL string, share *smb2.Share, sharePath string, c 
 	t := &Track{
 		Path:   fileURL,
 		Format: format,
-		Opener: smbFileOpener(fileURL),
+		Opener: smbShareFileOpener(cfg, sharePath),
 	}
 	populateMetadata(t, rs)
 	rs.Seek(0, io.SeekStart) //nolint:errcheck
@@ -260,7 +316,7 @@ func cachedOrScanSMBFile(fileURL string, share *smb2.Share, sharePath string, c 
 
 // cachedOrScanSMBZip returns tracks for a ZIP archive on an SMB share,
 // using the cache when the archive's fingerprint matches.
-func cachedOrScanSMBZip(fileURL string, share *smb2.Share, sharePath string, c *diskCache) ([]*Track, *cacheEntry) {
+func cachedOrScanSMBZip(fileURL string, share *smb2.Share, sharePath string, cfg smbConfig, c *diskCache) ([]*Track, *cacheEntry) {
 	info, err := share.Stat(sharePath)
 	if err != nil {
 		return nil, nil
@@ -310,7 +366,7 @@ func cachedOrScanSMBZip(fileURL string, share *smb2.Share, sharePath string, c *
 			Path:     fileURL,
 			ZipEntry: entryName,
 			Format:   format,
-			Opener:   smbZipOpener(fileURL, entryName),
+			Opener:   smbShareZipOpener(cfg, sharePath, entryName),
 		}
 		populateMetadata(t, rs)
 		rs.Seek(0, io.SeekStart) //nolint:errcheck
@@ -326,63 +382,53 @@ func cachedOrScanSMBZip(fileURL string, share *smb2.Share, sharePath string, c *
 	return tracks, entry
 }
 
-// smbFileOpener returns an Opener that connects to the SMB share and buffers
-// the file into memory for seekable playback.
-func smbFileOpener(fileURL string) audio.Opener {
+// smbShareFileOpener returns an Opener that connects using cfg and buffers the
+// file at sharePath into memory for seekable playback. Used at scan time when
+// credentials are already available in cfg.
+func smbShareFileOpener(cfg smbConfig, sharePath string) audio.Opener {
 	return func() (io.ReadSeekCloser, error) {
-		cfg, err := parseSMBURL(fileURL)
-		if err != nil {
-			return nil, err
-		}
-
 		share, teardown, err := connectSMB(cfg)
 		if err != nil {
 			return nil, err
 		}
 		defer teardown()
 
-		sharePath := cfg.subpath
 		f, err := share.Open(sharePath)
 		if err != nil {
-			return nil, fmt.Errorf("open SMB file %s: %w", fileURL, err)
+			return nil, fmt.Errorf("open SMB file %s: %w", sharePath, err)
 		}
 		data, err := io.ReadAll(f)
 		f.Close()
 		if err != nil {
-			return nil, fmt.Errorf("read SMB file %s: %w", fileURL, err)
+			return nil, fmt.Errorf("read SMB file %s: %w", sharePath, err)
 		}
 		return nopCloser{bytes.NewReader(data)}, nil
 	}
 }
 
-// smbZipOpener returns an Opener that fetches a ZIP from an SMB share and
-// extracts the named entry into memory for seekable playback.
-func smbZipOpener(zipURL, entryName string) audio.Opener {
+// smbShareZipOpener returns an Opener that fetches a ZIP from an SMB share and
+// extracts the named entry into memory for seekable playback. Used at scan time.
+func smbShareZipOpener(cfg smbConfig, sharePath, entryName string) audio.Opener {
 	return func() (io.ReadSeekCloser, error) {
-		cfg, err := parseSMBURL(zipURL)
-		if err != nil {
-			return nil, err
-		}
-
 		share, teardown, err := connectSMB(cfg)
 		if err != nil {
 			return nil, err
 		}
 		defer teardown()
 
-		f, err := share.Open(cfg.subpath)
+		f, err := share.Open(sharePath)
 		if err != nil {
-			return nil, fmt.Errorf("open SMB zip %s: %w", zipURL, err)
+			return nil, fmt.Errorf("open SMB zip %s: %w", sharePath, err)
 		}
 		data, err := io.ReadAll(f)
 		f.Close()
 		if err != nil {
-			return nil, fmt.Errorf("read SMB zip %s: %w", zipURL, err)
+			return nil, fmt.Errorf("read SMB zip %s: %w", sharePath, err)
 		}
 
 		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
-			return nil, fmt.Errorf("parse SMB zip %s: %w", zipURL, err)
+			return nil, fmt.Errorf("parse SMB zip %s: %w", sharePath, err)
 		}
 
 		for _, zf := range zr.File {
@@ -400,6 +446,55 @@ func smbZipOpener(zipURL, entryName string) audio.Opener {
 			}
 			return nopCloser{bytes.NewReader(entryData)}, nil
 		}
-		return nil, fmt.Errorf("entry %q not found in %s", entryName, zipURL)
+		return nil, fmt.Errorf("entry %q not found in %s", entryName, sharePath)
 	}
+}
+
+// smbFileOpener returns an Opener for a cached SMB file whose path is in
+// redacted (password-free) form. Credentials are looked up from the configured
+// sources at open time so they are never stored in the cache.
+func smbFileOpener(redactedFileURL string) audio.Opener {
+	return func() (io.ReadSeekCloser, error) {
+		fullURL := lookupSMBCredentials(redactedFileURL)
+		cfg, err := parseSMBURL(fullURL)
+		if err != nil {
+			return nil, err
+		}
+		return smbShareFileOpener(cfg, cfg.subpath)()
+	}
+}
+
+// smbZipOpener returns an Opener for a cached SMB ZIP entry whose path is in
+// redacted form. Credentials are looked up from sources at open time.
+func smbZipOpener(redactedZipURL, entryName string) audio.Opener {
+	return func() (io.ReadSeekCloser, error) {
+		fullURL := lookupSMBCredentials(redactedZipURL)
+		cfg, err := parseSMBURL(fullURL)
+		if err != nil {
+			return nil, err
+		}
+		return smbShareZipOpener(cfg, cfg.subpath, entryName)()
+	}
+}
+
+// lookupSMBCredentials finds the source in the sources list whose redacted
+// prefix matches redactedPath and returns the full URL (with password)
+// for that path. Returns redactedPath unchanged if no match is found.
+func lookupSMBCredentials(redactedPath string) string {
+	sources := LoadSources()
+	for _, src := range sources.Paths {
+		if !IsSMBPath(src) {
+			continue
+		}
+		cfg, err := parseSMBURL(src)
+		if err != nil {
+			continue
+		}
+		prefix := smbRedactedURLPrefix(cfg)
+		if strings.HasPrefix(redactedPath, prefix) {
+			fullPrefix := smbURLPrefix(cfg)
+			return fullPrefix + redactedPath[len(prefix):]
+		}
+	}
+	return redactedPath
 }

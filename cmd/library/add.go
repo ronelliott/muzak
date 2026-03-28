@@ -27,7 +27,12 @@ func newAddCommand() (*cobra.Command, error) {
 				source = abs
 			}
 
-			fmt.Printf("Scanning %s…\n", source)
+			display := source
+			if library.IsSMBPath(source) {
+				display = library.SMBRedactPath(source)
+			}
+
+			fmt.Printf("Scanning %s…\n", display)
 			if _, err := library.Scan([]string{source}); err != nil {
 				return fmt.Errorf("scan: %w", err)
 			}
@@ -40,7 +45,7 @@ func newAddCommand() (*cobra.Command, error) {
 				return fmt.Errorf("save sources: %w", err)
 			}
 
-			fmt.Printf("Added %s\n", source)
+			fmt.Printf("Added %s\n", display)
 			return nil
 		}),
 	)

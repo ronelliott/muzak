@@ -121,11 +121,16 @@ func saveDiskCache(c *diskCache) {
 // underDir reports whether path is exactly sourceDir or is directly nested
 // under it (i.e. separated by a path separator), preventing false matches
 // against sibling directories sharing a common prefix (e.g. /music vs /music2).
+// SMB URLs always use "/" as the separator regardless of OS.
 func underDir(path, sourceDir string) bool {
 	if path == sourceDir {
 		return true
 	}
-	prefix := sourceDir + string(filepath.Separator)
+	sep := string(filepath.Separator)
+	if IsSMBPath(path) || IsSMBPath(sourceDir) {
+		sep = "/"
+	}
+	prefix := sourceDir + sep
 	return len(path) > len(prefix) && path[:len(prefix)] == prefix
 }
 
@@ -133,12 +138,19 @@ func underDir(path, sourceDir string) bool {
 // disk cache, without re-scanning. Missing or unrecognised entries are silently
 // skipped. Results are deduplicated before returning. Use this for instant
 // startup when sources are already cached.
+//
+// SMB source paths are converted to their redacted (password-free) form before
+// matching because cache keys never contain passwords.
 func LoadFromCache(paths []string) []*Track {
 	c := loadDiskCache()
 	var tracks []*Track
 	for _, p := range paths {
+		canonP := p
+		if IsSMBPath(p) {
+			canonP = smbRedactedPath(p)
+		}
 		for sourcePath, entry := range c.Entries {
-			if underDir(sourcePath, p) {
+			if underDir(sourcePath, canonP) {
 				tracks = append(tracks, reconstructTracks(sourcePath, entry)...)
 			}
 		}
@@ -148,10 +160,16 @@ func LoadFromCache(paths []string) []*Track {
 
 // pruneCache removes all cache entries under the given source directory, then
 // saves the updated cache to disk.
+//
+// SMB source paths are converted to their redacted form before matching.
 func pruneCache(sourceDir string) {
+	canonDir := sourceDir
+	if IsSMBPath(sourceDir) {
+		canonDir = smbRedactedPath(sourceDir)
+	}
 	c := loadDiskCache()
 	for path := range c.Entries {
-		if underDir(path, sourceDir) {
+		if underDir(path, canonDir) {
 			delete(c.Entries, path)
 		}
 	}

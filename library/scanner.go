@@ -39,7 +39,7 @@ func Scan(dirs []string) ([]*Track, error) {
 
 	for _, dir := range dirs {
 		if IsSMBPath(dir) {
-			ts, err := scanSMB(dir)
+			ts, err := scanSMB(dir, old, newCache)
 			if err != nil {
 				return nil, fmt.Errorf("scan SMB %s: %w", dir, err)
 			}
