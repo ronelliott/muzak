@@ -296,10 +296,10 @@ jobs:
             muzak-windows-arm64.zip
 
   # ── notify-tap ──────────────────────────────────────────────────────────────
-  # Fires a repository_dispatch to homebrew-muzak, which owns the formula
+  # Fires a repository_dispatch to homebrew-public, which owns the formula
   # update logic in its own workflow.
   # TAP_GITHUB_TOKEN requirements:
-  #   - Fine-grained PAT: Contents: write on ronelliott/homebrew-muzak
+  #   - Fine-grained PAT: Contents: write on ronelliott/homebrew-public
   #   - Classic PAT: repo scope
 
   notify-tap:
@@ -307,10 +307,10 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch to homebrew-muzak
+      - name: Dispatch to homebrew-public
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
-          gh api repos/ronelliott/homebrew-muzak/dispatches \
+          gh api repos/ronelliott/homebrew-public/dispatches \
             -f event_type=muzak-release \
             -f "client_payload[tag]=${{ github.ref_name }}"
