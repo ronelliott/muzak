@@ -1,0 +1,89 @@
+# Release-Please Workflow
+#
+# Runs release-please on every push to main. Release-please reads the commit
+# history since the last release, determines the next version, and opens (or
+# updates) a release PR. When that PR is merged, release-please creates the git
+# tag and publishes the GitHub Release.
+#
+# After the release-please job, a second job (build-release-assets) is gated on
+# the release-please output `release_created`. When a release was actually
+# created, that job calls the reusable release archive workflow
+# (.github/workflows/release.yml) via workflow_call, passing the newly created
+# tag. Because this runs in the same workflow run that cut the release, it is
+# not subject to the GitHub restriction that blocks GITHUB_TOKEN-created events
+# from triggering new workflow runs.
+#
+# After build-release-assets completes, a third job (dispatch-tap) fires a
+# repository_dispatch event of type "muzak-release" at ronelliott/homebrew-public
+# so the tap's update-muzak.yml workflow can update the formula automatically.
+#
+# PAT requirement: GITHUB_TOKEN is scoped to this repo and cannot call
+# /repos/ronelliott/homebrew-public/dispatches. dispatch-tap therefore uses
+# secrets.TAP_GITHUB_TOKEN (a PAT with Contents:write on the homebrew-public
+# repo, stored as a repository secret). If the secret is absent the step is
+# skipped so the job does not fail — a human can then run the dispatch manually.
+#
+# Config: release-please-config.json (root Go package, bump-patch-for-minor-pre-major)
+# Manifest: .release-please-manifest.json (seeded at 0.1.10 to preserve history)
+
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-release-assets:
+    name: Build Release Assets
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write
+
+  dispatch-tap:
+    name: Dispatch Tap Formula Update
+    runs-on: ubuntu-latest
+    needs: [release-please, build-release-assets]
+    if: needs.release-please.outputs.release_created == 'true'
+    env:
+      TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+    steps:
+      # Trigger update-muzak.yml in ronelliott/homebrew-public via a
+      # repository_dispatch event. The tap workflow owns the formula update
+      # logic. Requires secrets.TAP_GITHUB_TOKEN: a PAT with Contents:write on
+      # ronelliott/homebrew-public. If unset, the step is skipped and the
+      # formula must be updated manually.
+      - name: Send repository_dispatch to homebrew-public
+        if: env.TAP_GITHUB_TOKEN != ''
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAP_PAT: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          curl -fsSL \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${TAP_PAT}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/ronelliott/homebrew-public/dispatches \
+            -d "{\"event_type\":\"muzak-release\",\"client_payload\":{\"tag\":\"${TAG}\"}}"

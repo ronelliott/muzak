@@ -1,61 +1,64 @@
+# Release Archive Workflow
+#
+# Reusable workflow (workflow_call) that builds cross-platform release archives
+# for all six supported targets and uploads them to an existing GitHub Release:
+#
+#   muzak-darwin-arm64.tar.gz
+#   muzak-darwin-amd64.tar.gz
+#   muzak-linux-amd64.tar.gz
+#   muzak-linux-arm64.tar.gz
+#   muzak-windows-amd64.zip
+#   muzak-windows-arm64.zip
+#
+# Each archive contains a single executable named `muzak` (`muzak.exe` on
+# windows), with the release version stamped via ldflags (-X main.version=<tag>).
+# Linux/darwin targets are .tar.gz; windows targets are .zip. Linux builds need
+# ALSA headers (libasound2-dev); windows builds use CGO_ENABLED=0.
+#
+# Triggers:
+#
+#   workflow_call — invoked by release-please.yml after release-please cuts a
+#     release. Receives the tag to build as an input. Because this runs inside
+#     the same workflow run that created the release, it is not subject to the
+#     GitHub restriction that blocks GITHUB_TOKEN-created events from triggering
+#     new workflow runs.
+#
+#   workflow_dispatch — manual fallback for rebuilding/re-uploading assets for
+#     an existing tag (e.g. to recover from a failed asset build).
+
 name: Release
 
 on:
-  push:
-    tags:
-      - "v[0-9]*.[0-9]*.[0-9]*"
+  workflow_call:
+    inputs:
+      tag:
+        description: "The release tag to build (e.g. v0.2.0)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to build (e.g. v0.2.0)"
+        required: true
+        type: string
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: write
+
 jobs:
-
-  # ── test ────────────────────────────────────────────────────────────────────
-
-  test:
-    name: Test (macOS)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test ./...
-
-  test-windows:
-    name: Test (Windows)
-    runs-on: windows-latest
-    env:
-      CGO_ENABLED: "0"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test ./...
 
   # ── build-darwin-arm64 ──────────────────────────────────────────────────────
 
   build-darwin-arm64:
     name: Build (darwin/arm64)
-    needs: test
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -66,26 +69,26 @@ jobs:
         env:
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-arm64 ./cmd/
+        run: go build -ldflags="-s -w -X main.version=${{ inputs.tag }}" -o muzak-darwin-arm64 ./cmd/
 
       - name: Package
         run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: muzak-darwin-arm64
-          path: muzak-darwin-arm64.tar.gz
-          retention-days: 1
+          tag_name: ${{ inputs.tag }}
+          files: muzak-darwin-arm64.tar.gz
 
   # ── build-darwin-amd64 ──────────────────────────────────────────────────────
 
   build-darwin-amd64:
     name: Build (darwin/amd64)
-    needs: test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -97,26 +100,26 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: "1"
           SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-darwin-amd64 ./cmd/
+        run: go build -ldflags="-s -w -X main.version=${{ inputs.tag }}" -o muzak-darwin-amd64 ./cmd/
 
       - name: Package
         run: mv muzak-darwin-amd64 muzak && tar -czf muzak-darwin-amd64.tar.gz muzak
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: muzak-darwin-amd64
-          path: muzak-darwin-amd64.tar.gz
-          retention-days: 1
+          tag_name: ${{ inputs.tag }}
+          files: muzak-darwin-amd64.tar.gz
 
   # ── build-linux-amd64 ───────────────────────────────────────────────────────
 
   build-linux-amd64:
     name: Build (linux/amd64)
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Install ALSA headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
@@ -130,26 +133,26 @@ jobs:
         env:
           GOARCH: amd64
           CGO_ENABLED: "1"
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-linux-amd64 ./cmd/
+        run: go build -ldflags="-s -w -X main.version=${{ inputs.tag }}" -o muzak-linux-amd64 ./cmd/
 
       - name: Package
         run: mv muzak-linux-amd64 muzak && tar -czf muzak-linux-amd64.tar.gz muzak
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: muzak-linux-amd64
-          path: muzak-linux-amd64.tar.gz
-          retention-days: 1
+          tag_name: ${{ inputs.tag }}
+          files: muzak-linux-amd64.tar.gz
 
   # ── build-linux-arm64 ───────────────────────────────────────────────────────
 
   build-linux-arm64:
     name: Build (linux/arm64)
-    needs: test
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Install ALSA headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
@@ -163,26 +166,26 @@ jobs:
         env:
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-linux-arm64 ./cmd/
+        run: go build -ldflags="-s -w -X main.version=${{ inputs.tag }}" -o muzak-linux-arm64 ./cmd/
 
       - name: Package
         run: mv muzak-linux-arm64 muzak && tar -czf muzak-linux-arm64.tar.gz muzak
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: muzak-linux-arm64
-          path: muzak-linux-arm64.tar.gz
-          retention-days: 1
+          tag_name: ${{ inputs.tag }}
+          files: muzak-linux-arm64.tar.gz
 
   # ── build-windows-amd64 ─────────────────────────────────────────────────────
 
   build-windows-amd64:
     name: Build (windows/amd64)
-    needs: [test, test-windows]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -194,29 +197,29 @@ jobs:
           GOARCH: amd64
           GOOS: windows
           CGO_ENABLED: "0"
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-windows-amd64.exe ./cmd/
+        run: go build -ldflags="-s -w -X main.version=${{ inputs.tag }}" -o muzak-windows-amd64.exe ./cmd/
 
       - name: Package
         run: |
           Move-Item muzak-windows-amd64.exe muzak.exe
           Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-amd64.zip
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: muzak-windows-amd64
-          path: muzak-windows-amd64.zip
-          retention-days: 1
+          tag_name: ${{ inputs.tag }}
+          files: muzak-windows-amd64.zip
 
   # ── build-windows-arm64 ─────────────────────────────────────────────────────
   # Cross-compiled from amd64; no CGO required for Windows.
 
   build-windows-arm64:
     name: Build (windows/arm64)
-    needs: [test, test-windows]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -228,89 +231,15 @@ jobs:
           GOARCH: arm64
           GOOS: windows
           CGO_ENABLED: "0"
-        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o muzak-windows-arm64.exe ./cmd/
+        run: go build -ldflags="-s -w -X main.version=${{ inputs.tag }}" -o muzak-windows-arm64.exe ./cmd/
 
       - name: Package
         run: |
           Move-Item muzak-windows-arm64.exe muzak.exe
           Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-arm64.zip
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: muzak-windows-arm64
-          path: muzak-windows-arm64.zip
-          retention-days: 1
-
-  # ── release ─────────────────────────────────────────────────────────────────
-
-  release:
-    name: Release
-    needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64, build-windows-amd64, build-windows-arm64]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download darwin-arm64 tarball
-        uses: actions/download-artifact@v4
-        with:
-          name: muzak-darwin-arm64
-
-      - name: Download darwin-amd64 tarball
-        uses: actions/download-artifact@v4
-        with:
-          name: muzak-darwin-amd64
-
-      - name: Download linux-amd64 tarball
-        uses: actions/download-artifact@v4
-        with:
-          name: muzak-linux-amd64
-
-      - name: Download linux-arm64 tarball
-        uses: actions/download-artifact@v4
-        with:
-          name: muzak-linux-arm64
-
-      - name: Download windows-amd64 zip
-        uses: actions/download-artifact@v4
-        with:
-          name: muzak-windows-amd64
-
-      - name: Download windows-arm64 zip
-        uses: actions/download-artifact@v4
-        with:
-          name: muzak-windows-arm64
-
-      - name: Publish release
+      - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          name: "${{ github.ref_name }}"
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            muzak-darwin-arm64.tar.gz
-            muzak-darwin-amd64.tar.gz
-            muzak-linux-amd64.tar.gz
-            muzak-linux-arm64.tar.gz
-            muzak-windows-amd64.zip
-            muzak-windows-arm64.zip
-
-  # ── notify-tap ──────────────────────────────────────────────────────────────
-  # Fires a repository_dispatch to homebrew-public, which owns the formula
-  # update logic in its own workflow.
-  # TAP_GITHUB_TOKEN requirements:
-  #   - Fine-grained PAT: Contents: write on ronelliott/homebrew-public
-  #   - Classic PAT: repo scope
-
-  notify-tap:
-    name: Notify Homebrew Tap
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch to homebrew-public
-        env:
-          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-        run: |
-          gh api repos/ronelliott/homebrew-public/dispatches \
-            -f event_type=muzak-release \
-            -f "client_payload[tag]=${{ github.ref_name }}"
+          tag_name: ${{ inputs.tag }}
+          files: muzak-windows-arm64.zip
