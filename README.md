@@ -19,6 +19,15 @@ Plays FLAC and WAV files, including tracks stored inside ZIP archives.
 
 ## Installation
 
+### Homebrew
+
+```sh
+brew tap ronelliott/public
+brew install ronelliott/public/muzak
+```
+
+### Go
+
 ```sh
 go install github.com/ronelliott/muzak/cmd@latest
 ```
