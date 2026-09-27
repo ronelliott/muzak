@@ -1,6 +1,8 @@
 # Release-Please Workflow
 #
-# Runs release-please on every push to main. Release-please reads the commit
+# Runs release-please on every push to main, and on workflow_dispatch so
+# dependabot-merge.yml can start it after merging a Dependabot PR (merges made
+# with GITHUB_TOKEN don't trigger push workflows). Release-please reads the commit
 # history since the last release, determines the next version, and opens (or
 # updates) a release PR. When that PR is merged, release-please creates the git
 # tag and publishes the GitHub Release.
@@ -32,6 +34,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
