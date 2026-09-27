@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Dispatched by dependabot-merge.yml after it merges a Dependabot PR, since
+  # merges made with GITHUB_TOKEN don't trigger push workflows.
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -78,7 +81,7 @@ jobs:
   build-darwin-arm64:
     name: Build (darwin/arm64)
     needs: [test-macos, test-linux, test-windows]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
@@ -109,7 +112,7 @@ jobs:
   build-darwin-amd64:
     name: Build (darwin/amd64)
     needs: [test-macos, test-linux, test-windows]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -141,7 +144,7 @@ jobs:
   build-linux-amd64:
     name: Build (linux/amd64)
     needs: [test-macos, test-linux, test-windows]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -175,7 +178,7 @@ jobs:
   build-linux-arm64:
     name: Build (linux/arm64)
     needs: [test-macos, test-linux, test-windows]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
@@ -209,7 +212,7 @@ jobs:
   build-windows-amd64:
     name: Build (windows/amd64)
     needs: [test-macos, test-linux, test-windows]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -244,7 +247,7 @@ jobs:
   build-windows-arm64:
     name: Build (windows/arm64)
     needs: [test-macos, test-linux, test-windows]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -278,11 +281,19 @@ jobs:
   release:
     name: Release
     needs: [build-darwin-arm64, build-darwin-amd64, build-linux-amd64, build-linux-arm64, build-windows-amd64, build-windows-arm64]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # github.event.head_commit only exists on push events, so look up the
+      # commit date directly to also cover workflow_dispatch runs.
+      - name: Get commit date
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "date=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }} --jq .commit.committer.date)" >> "$GITHUB_OUTPUT"
+
       - name: Download darwin-arm64 tarball
         uses: actions/download-artifact@v8
         with:
@@ -323,7 +334,7 @@ jobs:
             Rolling release — updated on every push to `main`.
 
             **Commit:** ${{ github.sha }}
-            **Date:** ${{ github.event.head_commit.timestamp }}
+            **Date:** ${{ steps.commit.outputs.date }}
 
             > **Note:** Linux and Windows binaries are tested via automated CI only and have not been verified on actual hardware.
 

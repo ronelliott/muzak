@@ -1,0 +1,92 @@
+# Dependabot Merge Workflow
+#
+# Merges Dependabot PRs once CI passes, then kicks off release-please.
+#
+# Triggered by workflow_run when the CI workflow completes successfully for a
+# Dependabot pull request. The job waits for every required check on the PR
+# (including CodeQL, which runs outside CI) and squash-merges it. The merge is
+# a normal one, not an admin bypass, so the main ruleset still applies.
+#
+# Major version updates are skipped and left for a human. The update type is
+# read from the metadata block Dependabot writes into its commit message
+# (`update-type: version-update:semver-major`), so grouped PRs are skipped if
+# any update in the group is major.
+#
+# Why this merges directly instead of enabling auto-merge: a merge made with
+# GITHUB_TOKEN does not trigger new workflow runs, so the push to main would
+# never start release-please or the rolling `latest` build in ci.yml.
+# workflow_dispatch is exempt from that rule, so after merging, this job
+# dispatches release-please.yml and ci.yml explicitly.
+#
+# This workflow never checks out or runs code from the PR.
+
+name: Dependabot Merge
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: dependabot-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+    steps:
+      - name: Find pull request
+        id: pr
+        run: |
+          pr=$(gh pr list --head "$HEAD_BRANCH" --state open --json number,author,headRefOid \
+            --jq ".[] | select(.author.login == \"app/dependabot\" and .headRefOid == \"$HEAD_SHA\") | .number")
+          if [ -z "$pr" ]; then
+            echo "No open Dependabot PR at $HEAD_SHA on $HEAD_BRANCH; nothing to do."
+            exit 0
+          fi
+          echo "number=$pr" >> "$GITHUB_OUTPUT"
+
+      - name: Skip major updates
+        id: gate
+        if: steps.pr.outputs.number != ''
+        run: |
+          if grep -q 'update-type: version-update:semver-major' <<< "$COMMIT_MESSAGE"; then
+            echo "PR #${{ steps.pr.outputs.number }} contains a major update; leaving it for review."
+            exit 0
+          fi
+          echo "merge=true" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for required checks
+        if: steps.gate.outputs.merge == 'true'
+        run: gh pr checks "${{ steps.pr.outputs.number }}" --required --watch --interval 20
+
+      - name: Merge
+        if: steps.gate.outputs.merge == 'true'
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --match-head-commit "$HEAD_SHA"
+
+      - name: Dispatch release-please
+        if: steps.gate.outputs.merge == 'true'
+        run: gh workflow run release-please.yml --ref "${{ github.event.repository.default_branch }}"
+
+      - name: Dispatch CI (rolling latest build)
+        if: steps.gate.outputs.merge == 'true'
+        run: gh workflow run ci.yml --ref "${{ github.event.repository.default_branch }}"
