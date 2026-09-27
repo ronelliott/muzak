@@ -56,12 +56,12 @@ jobs:
     name: Build (darwin/arm64)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -75,7 +75,7 @@ jobs:
         run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           files: muzak-darwin-arm64.tar.gz
@@ -86,12 +86,12 @@ jobs:
     name: Build (darwin/amd64)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -106,7 +106,7 @@ jobs:
         run: mv muzak-darwin-amd64 muzak && tar -czf muzak-darwin-amd64.tar.gz muzak
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           files: muzak-darwin-amd64.tar.gz
@@ -117,7 +117,7 @@ jobs:
     name: Build (linux/amd64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 
@@ -125,7 +125,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -139,7 +139,7 @@ jobs:
         run: mv muzak-linux-amd64 muzak && tar -czf muzak-linux-amd64.tar.gz muzak
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           files: muzak-linux-amd64.tar.gz
@@ -150,7 +150,7 @@ jobs:
     name: Build (linux/arm64)
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 
@@ -158,7 +158,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -172,7 +172,7 @@ jobs:
         run: mv muzak-linux-arm64 muzak && tar -czf muzak-linux-arm64.tar.gz muzak
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           files: muzak-linux-arm64.tar.gz
@@ -183,12 +183,12 @@ jobs:
     name: Build (windows/amd64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -205,7 +205,7 @@ jobs:
           Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-amd64.zip
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           files: muzak-windows-amd64.zip
@@ -217,12 +217,12 @@ jobs:
     name: Build (windows/arm64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -239,7 +239,7 @@ jobs:
           Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-arm64.zip
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           files: muzak-windows-arm64.zip
