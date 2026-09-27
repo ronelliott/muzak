@@ -17,10 +17,10 @@ jobs:
     name: Test (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -36,13 +36,13 @@ jobs:
     name: Test (Linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ALSA headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -60,10 +60,10 @@ jobs:
     env:
       CGO_ENABLED: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -81,10 +81,10 @@ jobs:
     if: github.event_name == 'push'
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -98,7 +98,7 @@ jobs:
         run: mv muzak-darwin-arm64 muzak && tar -czf muzak-darwin-arm64.tar.gz muzak
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muzak-darwin-arm64
           path: muzak-darwin-arm64.tar.gz
@@ -112,10 +112,10 @@ jobs:
     if: github.event_name == 'push'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -130,7 +130,7 @@ jobs:
         run: mv muzak-darwin-amd64 muzak && tar -czf muzak-darwin-amd64.tar.gz muzak
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muzak-darwin-amd64
           path: muzak-darwin-amd64.tar.gz
@@ -144,13 +144,13 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ALSA headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -164,7 +164,7 @@ jobs:
         run: mv muzak-linux-amd64 muzak && tar -czf muzak-linux-amd64.tar.gz muzak
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muzak-linux-amd64
           path: muzak-linux-amd64.tar.gz
@@ -178,13 +178,13 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ALSA headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -198,7 +198,7 @@ jobs:
         run: mv muzak-linux-arm64 muzak && tar -czf muzak-linux-arm64.tar.gz muzak
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muzak-linux-arm64
           path: muzak-linux-arm64.tar.gz
@@ -212,10 +212,10 @@ jobs:
     if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -232,7 +232,7 @@ jobs:
           Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-amd64.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muzak-windows-amd64
           path: muzak-windows-amd64.zip
@@ -247,10 +247,10 @@ jobs:
     if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -267,7 +267,7 @@ jobs:
           Compress-Archive -Path muzak.exe -DestinationPath muzak-windows-arm64.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muzak-windows-arm64
           path: muzak-windows-arm64.zip
@@ -284,37 +284,37 @@ jobs:
       contents: write
     steps:
       - name: Download darwin-arm64 tarball
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: muzak-darwin-arm64
 
       - name: Download darwin-amd64 tarball
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: muzak-darwin-amd64
 
       - name: Download linux-amd64 tarball
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: muzak-linux-amd64
 
       - name: Download linux-arm64 tarball
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: muzak-linux-arm64
 
       - name: Download windows-amd64 zip
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: muzak-windows-amd64
 
       - name: Download windows-arm64 zip
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: muzak-windows-arm64
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: "Latest build"
